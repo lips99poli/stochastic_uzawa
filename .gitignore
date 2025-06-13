@@ -1,0 +1,24 @@
+# Ignore build directory
+/build/
+
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Compiled binaries
+*.o
+*.out
+*.exe
+uzawa_exec
+
+# IDE or OS-specific files
+.vscode/
+
+*.log
+*.swp
+.DS_Store
+
+# Backup files
+*~
