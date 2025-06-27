@@ -1,0 +1,6 @@
+N = 5
+D = 50
+M = 2
+epsilon = 0.01
+delta = 0.001
+beta = 0.9
