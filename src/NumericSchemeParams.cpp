@@ -6,7 +6,7 @@ NumericSchemeParams load_params(const std::string& path){
     GetPot datafile(path.c_str());
     NumericSchemeParams params;
     params.T = datafile("T", 1);
-    params.N = datafile("N", 101);
+    params.N = datafile("N", 100);
     params.D = datafile("D", 10000);
     params.M = datafile("M", 1000);
     params.epsilon = datafile("epsilon", 1e-6);
