@@ -9,12 +9,17 @@
 #include <cstddef>
 #include <Eigen/Dense>
 
+
+
 //create aliases for Eigen types
 using Matrix = Eigen::MatrixXd;
 using Vector = Eigen::VectorXd;
 using Ref = Eigen::Ref<Matrix>;
 
 using CondExp_ij = std::vector<std::vector<Vector>>; // Map to store conditional expectations for each time step couple (i,j)
+
+// Forward declaration of LaguerrePolynomial function
+Matrix LaguerrePolynomial(const Vector& x, const int degree);
 
 // This class implements 2 LSMCRegressions:
 // 1. LSMCR: Least Squares Monte Carlo Regression for the conditional expectation E_i[ sum_l_i+1_N {lamda3_l - lambda4_l} ] with 0<i<=N-1
@@ -38,8 +43,9 @@ using CondExp_ij = std::vector<std::vector<Vector>>; // Map to store conditional
 
 class LSMCR{
     private:
-    std::size_t d1; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the first regression
-    std::size_t d2; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the second regression
+    const std::size_t d1; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the first regression
+    const std::size_t d2; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the second regression
+    const std::size_t comb_upto_d1, comb_upto_d2;
 
     const std::size_t N; // Number of time steps
     const std::size_t M; // Number of sample paths
@@ -60,16 +66,18 @@ class LSMCR{
     Matrix target_i; // Target vector for the first regression, of size (N-1,M): for every timestamp i I have a target vector of size M
     CondExp_ij target_ij; // Target map for the second regression, of size (?,?,M): for every timestamp couple (i,j) I have a target vector of size M
 
+    // Regressors for the 2 regressions
+    std::vector<Matrix> regressors_i; // Vector of length N where each element is the matrix PHI_i of size((d+1  2), M) 
+
     // Coefficients for the two regressions
-    Matrix regressors_i; // Coefficients matrix for the first regression, of size ((d1+1  2), N-1)
-    CondExp_ij regressors_ij; // Coefficients map for the second regression, of size ((d2+1  2), ?, ?)
+    Matrix coeff_i; // Coefficients matrix for the first regression, of size ((d1+1) choose 2), N-1)
+    CondExp_ij coeff_ij; // Coefficients map for the second regression, of size ((d2+1) choose 2), ?, ?)
 
     // Dubbio: non ho capito da quando inizia la regressione: i=0 o i=1?
 
+    // This function will precompute the target vector for the first regression
     void precompute_target_i(){
-        // This function will precompute the target vector for the first regression
         target_i = Matrix::Zero(M, N); // Initialize the target vector for the first regression
-       
         // Compute cumulative sum from right to left for efficiency
         Vector cumsum = Vector::Zero(M);
         for (std::size_t i = N; i >= 1; --i) {
@@ -78,19 +86,57 @@ class LSMCR{
         }
     }
 
+    void precompute_regressors_i(){
+        regressors_i.clear();
+        for(std::size_t i=0; i<N; ++i){
+            // The matrix PHI_i will be of dimension Mx(d1+3 choose 3), where M is the number of sample paths.
+            // Each column of PHI_i will contain all possible combinations of multiplication of Laguerre polynomials of the three variables such that the sum of the degrees is less than or equal to d1.
+            Matrix PHI_i = Matrix::Zero(M,comb_upto_d1); // Initialize the matrix PHI_i
+            std::size_t col_idx = 0; // Column index for PHI_i
+            for (std::size_t x = 0; x <= d1; ++x) {
+                for (std::size_t y = 0; y <= d1-x; ++y) {
+                    for (std::size_t z = 0; z <= d1-x-y; ++z) {
+                        if (col_idx < comb_upto_d1) {
+                            PHI_i.col(col_idx) = laguerre_alpha[i].col(x).array() *
+                                               laguerre_Z_u[i].col(y).array() *
+                                               laguerre_X_u[i].col(z).array();
+                            col_idx++;
+                        }
+                    }
+                }
+            }
+            regressors_i.push_back(PHI_i);
+        }
+    }
+
+    // Function to compute the coefficients of the first LSMCR regression
+    void regression_i(){
+        // The Linear Regression will solve for each time step i the following equation: PHI_i * coeffs_i = Y_i giving as output coeffs_i of size (d+1 choose 2) x 1
+        // The final output will be the matrix coeffs_i of size ((d+1 choose 2), N)
+        
+        // Initialize the output matrix for coefficients
+        coeff_i = Matrix::Zero(comb_upto_d1, N); // (d1+1 choose 2) coefficients for each time step i
+
+        // Cicle over the time steps i from 0 to N-1
+        for (std::size_t i = 0; i < N; ++i) {
+            // Construct matrix PHI_i
+            const Matrix& PHI_i = regressors_i[i];
+
+            // Solve the linear regression problem using least squares QR decomposition
+            coeff_i.col(i) = PHI_i.colPivHouseholderQr().solve(target_i.col(i));
+        }
+    }
+
     public:
     LSMCR(const std::size_t d1, const std::size_t d2, const std::size_t N, const std::size_t M, const std::unique_ptr<Matrix>& alpha, const std::unique_ptr<Matrix>& Z_u, const std::unique_ptr<Matrix>& X_u, const std::vector<std::unique_ptr<Matrix>>& lambda)
-        : d1(d1), d2(d2), N(N), M(M), 
+        : d1(d1), d2(d2), comb_upto_d1((d1+3)*(d1+2)*(d1+1)/6), comb_upto_d2((d2+3)*(d2+2)*(d2+1)/6), N(N), M(M), 
           alpha(alpha), Z_u(Z_u), X_u(X_u), lambda(lambda)
         {
-        if (d1 < 1 || d2 < 1) {
-            throw std::invalid_argument("Degree must be at least 1.");
-            this->d1 = 1; // Set to 1 if less than 1
-            this->d2 = 1; // Set to 1 if less than 1
-        }
         if (!alpha || !Z_u || !X_u) {
             throw std::invalid_argument("Invalid input for state variables.");
         }
+        regressors_i.reserve(N);
+
     }
 
     void update_regressor(){
@@ -117,52 +163,22 @@ class LSMCR{
         // Precompute the targets
         precompute_target_i();
         //precompute_target_ij();
-    }
 
-    // Function to construct the regressors for the first regression
-    Matrix construct_regressors_i(std::size_t i) const {
-        // The matrix PHI_i will be of dimension (d1+1  2) x M, where M is the number of sample paths.
-        // Each column of PHI_i will contain all possible combinations of multiplication of Laguerre polynomials of the three variables such that the sum of the degrees is less than or equal to d1.
-        Matrix PHI_i = Matrix::Zero((d1 + 1) * (d1 + 2) / 2, M); // Initialize the matrix PHI_i
-        for (std::size_t x = 0; x < N; ++x) {
-            for (std::size_t y = 0; y <= d1-x; ++y) {
-                for (std::size_t z = 0; z <= d1-x-y; ++z) {
-                    PHI_i.col(i) = laguerre_alpha[i].col(x).array() *
-                                   laguerre_Z_u[i].col(y).array() *
-                                   laguerre_X_u[i].col(z).array();
-                }
-            }
-        }
-    }
+        // REGRESSORS
+        precompute_regressors_i();
 
-    // Function to compute the coefficients of the first LSMCR regression
-    Matrix regression_i() const{
-        // The Linear Regression will solve for each time step i the following equation: PHI_i * coeffs_i = Y_i giving as output coeffs_i of size (d+1  2) x 1
-        // The final output will be the matrix coeffs_i of size ((d+1  2), N-1)
-
-        std::size_t newton_bin_d1 = (d1 + 2) * (d1 + 1) / 2; // Newton binomial coefficient for (d1+1 choose 2)
-        
-        // Initialize the output matrix for coefficients
-        Matrix coeffs_i = Matrix::Zero(newton_bin_d1 + 1, N - 1); // (d1+1  2) coefficients for each time step i
-
-        // Cicle over the time steps i from 0 to N-2
-        for (std::size_t i = 0; i < N; ++i) {
-            // Construct matrix PHI_i
-            Matrix PHI_i = construct_regressors_i(i);
-
-            // Solve the linear regression problem using least squares QR decomposition
-            coeffs_i.col(i) = PHI_i.colPivHouseholderQr().solve(target_i.col(i));
-        }
-
-        return coeffs_i; // Return the coefficients matrix for the first regression
+        // COEFFICIENTS
+        regression_i();
     }
 
     // Function to estimate the conditional expectation E_i[ sum_l_i+1_N {lamda3_l - lambda4_l} ] given the coefficients of the first regression
     Matrix estimate_conditional_expectation_i() const {
-        Matrix cond_exp_i = Matrix::Zero(M, N-1);
-
-    }
-        
+        Matrix cond_exp_i = Matrix::Zero(M, N);
+        for (std::size_t i=0; i<N; ++i){
+            cond_exp_i.col(i) = regressors_i[i] * coeff_i.col(i);
+        }
+        return cond_exp_i;
+    }        
 
 };
 
@@ -170,14 +186,20 @@ class LSMCR{
 // Function to compute Laguerre polinomial on a given vector of a given degree.
 // For the implementation it used a recursive implementation: L_n(x) = (2n-1-x)L_{n-1}(x) - (n-1)L_{n-2}(x) / n
 Matrix LaguerrePolynomial(const Vector& x, const int degree){
+    if (degree < 0) {
+        throw std::invalid_argument("Degree must be non-negative");
+    }
+    
     Matrix result(x.size(), degree+1);
     result.col(0) = Vector::Ones(x.size()); // L_0(x) = 1
-    result.col(1) = result.col(0)-x; // L_1(x) = 1-x
-    for (std::size_t n = 2; n <= degree; ++n) {
+    if (degree >= 1) {
+        result.col(1) = result.col(0) - x; // L_1(x) = 1-x
+    }
+    
+    for (int n = 2; n <= degree; ++n) {
         result.col(n) = ((2 * n - 1 - x.array()) * result.col(n - 1).array() - (n - 1) * result.col(n - 2).array()) / n;
     }
     return result;
 }
 
-;
 #endif // LSMCR_HPP
