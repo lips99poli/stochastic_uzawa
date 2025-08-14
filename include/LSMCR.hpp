@@ -247,16 +247,6 @@ class LSMCR{
     const Matrix& get_coeff_i() const { return coeff_i; }
     const CondExp_ij& get_coeff_ij() const { return coeff_ij; }
 
-    // Getters fpr debugging
-    const std::vector<Matrix>& get_laguerre_alpha() const { return laguerre_alpha; }
-    const std::vector<Matrix>& get_laguerre_Z_u() const { return laguerre_Z_u; }
-    const std::vector<Matrix>& get_laguerre_X_u() const { return laguerre_X_u; }
-    const Matrix& get_target_i() const { return target_i; }
-    const Matrix& get_target_ij() const { return target_ij; }
-    const std::vector<Matrix>& get_regressors_i() const { return regressors_i; }
-    const std::vector<Matrix>& get_regressors_ij() const { return regressors_ij; }
-    const Matrix& get_diff_lambda_3_4() const { return diff_lambda_3_4; }
-
 };
 
 
