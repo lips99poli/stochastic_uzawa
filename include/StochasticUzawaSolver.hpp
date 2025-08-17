@@ -9,6 +9,9 @@ using Matrix = Eigen::MatrixXd;
 using Vector = Eigen::VectorXd;
 using Ref = Eigen::Ref<Matrix>; // Specify the template argument for Eigen::Ref
 
+using CondExp_ij = std::vector<Matrix>; // Map to store conditional expectations for each time step couple (i,j)
+
+
 #include "NumericSchemeParams.hpp"
 #include "Kernel.hpp"
 #include "OUParams.hpp"
@@ -23,6 +26,8 @@ class StochasticUzawaSolver {
     const double time_delta; // Time step size
     const std::size_t N; // Number of time steps
     const Vector time_grid; // Time grid
+
+    const Kernel& kernel; // Kernel object
     
     std::vector<Matrix> R; // Signal matrix
     Matrix alpha;
@@ -33,6 +38,9 @@ class StochasticUzawaSolver {
     // The output u, X_u and lamda are stored in the heap
     std::unique_ptr<Matrix> u; // Control vector
     std::unique_ptr<Matrix> X_u; // State vector
+    Matrix Z_u; // Transient price impact
+    Matrix K_sint_weights; // Precomputed weights: W(j,i) = ∫_{t_j}^{t_{j+1}} K(t_i, s) ds
+    Matrix prefix_time_weights; // Precomputed prefix weights: L(j,i) = 1{j<=i} * time_delta
     std::vector<std::unique_ptr<Matrix>> lambda; // 4 Lagrange multipliers
     std::vector<double> slackness; // Slackness variables for convergence check
 
@@ -86,6 +94,41 @@ class StochasticUzawaSolver {
         *lambda[3] += adaptive_learning * (*X_u).binaryExpr(constraints[3],gradient_update);
     }
 
+    // Precompute W(j,i) = ∫_{t_j}^{t_{j+1}} K(t_i, s) ds for 0 <= j < i < N
+    void precompute_kernel_s_integrals() {
+        K_sint_weights = Matrix::Zero(N, N);
+        for (std::size_t i = 0; i < N; ++i) {
+            for (std::size_t j = 0; j < i; ++j) {
+                K_sint_weights(j, i) = kernel.s_integral(time_grid(i), time_grid(j), time_grid(j + 1));
+            }
+        }
+    }
+
+    // Precompute matrix for integral in time of all paths of u, note it will be multiplied on the left of matrix u so it is upper triangular
+    void precompute_prefix_time_weights() {
+        prefix_time_weights = Matrix::Zero(N, N);
+        for (std::size_t i = 0; i < N; ++i) {
+            for (std::size_t j = 0; j <= i; ++j) {
+                prefix_time_weights(j, i) = time_delta;
+            }
+        }
+    }
+
+    // Update the transient price impact Z_u based on the current control variable u
+    void update_transient_price_impact() {
+        // Z_u (t) = integral_0^t u(s)*K(t,s)ds
+        Z_u.noalias() = (*u) * K_sint_weights;
+    }
+
+    void update_inventory(){
+        // Update the inventory based on the current control variable u: X_u is the integral of u w.r.t. time plus intial holding X0
+        // X_u(t) = X0 + integral_0^t u(s)ds
+        // Note: X0 is assumed to be zero for simplicity, but can be set to a different value if needed
+        // Batched cumulative integral: X(:, i) = sum_{j=0..i} u(:, j) * time_delta
+        // Using precomputed prefix_time_weights with L(j,i) = 1{j<=i} * time_delta, we have X = u * L
+        X_u->noalias() = (*u) * prefix_time_weights;
+    }
+
 
     public:
     // Note that variables are of time length N, whereas multipliers are of time length N+1
@@ -95,6 +138,7 @@ class StochasticUzawaSolver {
         ,time_delta(params.T / (params.N+1))
         ,N(params.N) // Number of time steps
         ,time_grid(Vector::LinSpaced(params.N+1, 0, params.T)) //see (3.1) paper
+        ,kernel(k)
         // Control problem parameters
         ,constraints(compute_constraints(params.M))
         ,U(std::vector<Matrix>(1,Matrix::Identity(params.N, params.N))) //risolvere dubbio su B eq Fredholm
@@ -102,17 +146,22 @@ class StochasticUzawaSolver {
         // Control Variables and Lagrange Multipliers
         ,u( std::make_unique<Matrix>(Matrix::Zero(params.M, params.N)) )
         ,X_u( std::make_unique<Matrix>(Matrix::Zero(params.M, params.N)) )
+        ,Z_u( Matrix::Zero(params.M, params.N) )
         ,lambda(std::vector<std::unique_ptr<Matrix>>(4, std::make_unique<Matrix>(Matrix::Zero(params.M, params.N+1)))) // Initialize lambda vector with nullptrs
         ,slackness(std::vector<double>(4, std::numeric_limits<double>::infinity())) // Initialize slackness variables to infinity
         // Cycle tools
+
     {
         //launch the simulation of the OU process
         OUSimulator ou_simulator(ou_params, time_grid, params.M);
-        ou_simulator.print();
         // Fill the R matrix based on the OU parameters
         R = compute_R(ou_simulator.getOU(), params.M, ou_params);
         // Fill the alpha matrix based on the OU parameters
         alpha = ou_simulator.getAlpha();
+        // Precompute kernel integral weights once (kernel and time_grid are const)
+        precompute_kernel_s_integrals();
+        // Precompute prefix-time weights for fast inventory integration
+        precompute_prefix_time_weights();
     }
 
     void solve(){
@@ -124,13 +173,14 @@ class StochasticUzawaSolver {
         // 1. Gradient update lambda
         // 2. Estimate conditional expectations through Least Squares Monte Carlo Regression (LSMCR)
         // 3. Update control variable u through Nystrom Scheme
-        // 4. Update state variable X_u integrating the control variable u with left rectangle rule
+        // 4. Update state variables X_u and Z_u integrating the control variable u with left rectangle rule
         // 5. Update Slackness Variables to check if convergence is reached
 
         // Initilize LSMCR structure
         const std::size_t d1 = 3; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the first regression
         const std::size_t d2 = 3; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the second regression
-        LSMCR lsmcr(d1,d2);
+
+        LSMCR lsmcr(d1, d2, N, params.M, alpha, u, X_u, lambda);
 
         auto max_slackness_it = std::max_element(slackness.begin(), slackness.end());
         //check it is not equal to slackness.end()
@@ -145,47 +195,24 @@ class StochasticUzawaSolver {
             do_gradient_update(n);
 
             // 2. Estimate conditional expectations through Least Squares Monte Carlo Regression (LSMCR)
+            lsmcr.update_regressor();
+            Matrix cond_exp_i = lsmcr.estimate_conditional_expectation_i();
+            CondExp_ij cond_exp_ij = lsmcr.estimate_conditional_expectation_ij();
+
+            // 3. Update control variable u through Nystrom Scheme
+
+            // 4. Update state variable X_u and Z_u integrating the control variable u with left rectangle rule
+            update_inventory();
+            update_transient_price_impact();
             
-            
+            // 5. Update Slackness Variables to check if convergence is reached
 
             max_slackness_it = std::max_element(slackness.begin(), slackness.end());
             
         }
 
 
-
-
     }
-
-
-
-
-    void verify(){
-        // print time grid
-        std::cout << "Time grid: " << time_grid.transpose() << std::endl;
-        // Verify the dimensions of the matrices
-        if (R.empty()) {
-            throw std::runtime_error("Signal matrix R is empty.");
-        }
-        if (u->rows() != lambda[0]->rows() || u->cols() != N) {
-            throw std::runtime_error("Control vector u has incorrect dimensions.");
-        }
-        if (X_u->rows() != lambda[0]->rows() || X_u->cols() != N) {
-            throw std::runtime_error("State vector X_u has incorrect dimensions.");
-        }
-
-        //verify R matrix is full not zero
-        for (const auto& R_m : R) {
-            if (R_m.isZero()) {
-                throw std::runtime_error("Signal matrix R contains a zero matrix.");
-            }
-        }
-        // Print matrixes R
-        std::cout << "Signal matrix R (size): " << R.size() << " matrices of size " << R[0].rows() << "x" << R[0].cols() << std::endl;
-        std::cout << "Signal matrix R (first matrix):\n" << R[0] << std::endl;
-        std::cout << "Signal matrix R (first matrix):\n" << R[1] << std::endl;
-    }
-
 
 };
 

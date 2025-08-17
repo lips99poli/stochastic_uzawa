@@ -50,7 +50,7 @@ class LSMCR{
     const std::size_t N; // Number of time steps
     const std::size_t M; // Number of sample paths
 
-    const std::unique_ptr<Matrix>& alpha; // Alpha matrix, of size (M, N)
+    const Matrix& alpha; // Alpha matrix, of size (M, N)
     const std::unique_ptr<Matrix>& Z_u; // Z_u matrix, of size (M, N)
     const std::unique_ptr<Matrix>& X_u; // X_u matrix, of size (M, N)
     const std::vector<std::unique_ptr<Matrix>>& lambda; // Lambda vector, of size (4, M, N+1)
@@ -177,11 +177,11 @@ class LSMCR{
     }
 
     public:
-    LSMCR(const std::size_t d1, const std::size_t d2, const std::size_t N, const std::size_t M, const std::unique_ptr<Matrix>& alpha, const std::unique_ptr<Matrix>& Z_u, const std::unique_ptr<Matrix>& X_u, const std::vector<std::unique_ptr<Matrix>>& lambda)
+    LSMCR(const std::size_t d1, const std::size_t d2, const std::size_t N, const std::size_t M, const Matrix& alpha, const std::unique_ptr<Matrix>& Z_u, const std::unique_ptr<Matrix>& X_u, const std::vector<std::unique_ptr<Matrix>>& lambda)
         : d1(d1), d2(d2), comb_upto_d1((d1+3)*(d1+2)*(d1+1)/6), comb_upto_d2((d2+3)*(d2+2)*(d2+1)/6), N(N), M(M), 
           alpha(alpha), Z_u(Z_u), X_u(X_u), lambda(lambda)
         {
-        if (!alpha || !Z_u || !X_u) {
+        if (alpha.size() == 0 || !Z_u || !X_u) {
             throw std::invalid_argument("Invalid input for state variables.");
         }
         regressors_i.reserve(N);
@@ -200,7 +200,7 @@ class LSMCR{
         // Compute the Laguerre polynomials for each variable
         int degree = std::max(d1, d2);
         for (std::size_t i = 0; i < N; ++i) {
-            laguerre_alpha.push_back(LaguerrePolynomial((*alpha).col(i), degree));
+            laguerre_alpha.push_back(LaguerrePolynomial(alpha.col(i), degree));
             laguerre_Z_u.push_back(LaguerrePolynomial((*Z_u).col(i), degree));
             laguerre_X_u.push_back(LaguerrePolynomial((*X_u).col(i), degree));
         }
