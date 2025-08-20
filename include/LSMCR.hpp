@@ -55,6 +55,7 @@ class LSMCR{
     const std::unique_ptr<Matrix>& X_u; // X_u matrix, of size (M, N)
     const std::vector<std::unique_ptr<Matrix>>& lambda; // Lambda vector, of size (4, M, N+1)
 
+    Matrix diff_lambda_1_2; // Difference lambda1 - lambda2, of size (M, N+1)
     Matrix diff_lambda_3_4; // Difference lambda3 - lambda4, of size (M, N+1)
 
     // Laguerre polynomials for the three variables of state, vector length N containinig matrixes of size (M, max(d1,d2)+1), (M, max(d1,d2)+1), (M, max(d1,d2)+1)
@@ -74,6 +75,11 @@ class LSMCR{
     Matrix coeff_i; // Coefficients matrix for the first regression, of size ((d1+3  3), N-1)
     CondExp_ij coeff_ij; // Coefficients map for the second regression, of size (N-1,(d2+3  3),N-1-i): for each i going from 0 to N-2 i do regression for target at all j in [i+1,N-1] and i get (d2+3  3) coefficientes 
 
+    // Estimates for the two conditional expectations
+    Matrix cond_exp_i;
+    CondExp_ij cond_exp_ij;
+
+
     // Dubbio: non ho capito da quando inizia la regressione: i=0 o i=1?
 
     // This function will precompute the target vector for the first regression
@@ -92,7 +98,7 @@ class LSMCR{
         target_ij = Matrix::Zero(M, N-1);
         for (std::size_t j=0; j<N-1; ++j){
             // Recall that targets are already shifted by 1 in time
-            target_ij.col(j) = target_i.col(j+1) + lambda[0]->col(j+1) - lambda[1]->col(j+1);
+            target_ij.col(j) = target_i.col(j+1) + diff_lambda_1_2.col(j+1);
         }
     }
     
@@ -176,6 +182,24 @@ class LSMCR{
         }
     }
 
+    // Function to estimate the conditional expectation E_i[ sum_l_i+1_N {lamda3_l - lambda4_l} ] given the coefficients of the first regression
+    void estimate_conditional_expectation_i() {
+        cond_exp_i = Matrix::Zero(M, N);
+        for (std::size_t i=0; i<N; ++i){
+            cond_exp_i.col(i) = regressors_i[i] * coeff_i.col(i);
+        }
+    }
+    // Function to estimate the conditional expectation E_i[ lamda1_j - lamda2_j + sum_l_j+1_N {lambda3_l - lambda2_4} ] given the coefficients of the second regression
+    void estimate_conditional_expectation_ij() {
+        cond_exp_ij.reserve(N-1); // Reserve space for N-1 matrices
+        for (std::size_t i=0; i<N-1; ++i){
+            cond_exp_ij.emplace_back(M, N-1-i); // Create a new Matrix for each i
+            for (std::size_t j=i; j<N-1; ++j){
+                cond_exp_ij[i].col(j-i) = regressors_ij[i] * coeff_ij[i].col(j-i);
+            }
+        }
+    }
+
     public:
     LSMCR(const std::size_t d1, const std::size_t d2, const std::size_t N, const std::size_t M, const Matrix& alpha, const std::unique_ptr<Matrix>& Z_u, const std::unique_ptr<Matrix>& X_u, const std::vector<std::unique_ptr<Matrix>>& lambda)
         : d1(d1), d2(d2), comb_upto_d1((d1+3)*(d1+2)*(d1+1)/6), comb_upto_d2((d2+3)*(d2+2)*(d2+1)/6), N(N), M(M), 
@@ -184,19 +208,19 @@ class LSMCR{
         if (alpha.size() == 0 || !Z_u || !X_u) {
             throw std::invalid_argument("Invalid input for state variables.");
         }
+        laguerre_alpha.reserve(N);
+        laguerre_Z_u.reserve(N);
+        laguerre_X_u.reserve(N);
         regressors_i.reserve(N);
         coeff_ij.reserve(N-1);
     }
 
     void update_regressor(){
-        // LAGUERRE POLYNOMIALS: Compute Laguerre polynomials of the 3 variables up to degrees max(d1,d2)
+        // LAGUERRE POLYNOMIALS
+        // Compute Laguerre polynomials of the 3 variables up to degrees max(d1,d2)
         laguerre_alpha.clear();
         laguerre_Z_u.clear();
         laguerre_X_u.clear();
-        // Reserve space for the vectors
-        laguerre_alpha.reserve(N);
-        laguerre_Z_u.reserve(N);
-        laguerre_X_u.reserve(N);
         // Compute the Laguerre polynomials for each variable
         int degree = std::max(d1, d2);
         for (std::size_t i = 0; i < N; ++i) {
@@ -205,7 +229,8 @@ class LSMCR{
             laguerre_X_u.push_back(LaguerrePolynomial((*X_u).col(i), degree));
         }
         
-        // LAMBDA3 - LAMBDA4
+        // LAMBDA1 - LAMBDA2 and LAMBDA3 - LAMBDA4
+        diff_lambda_1_2 = (*lambda[0]) - (*lambda[1]);
         diff_lambda_3_4 = (*lambda[2]) - (*lambda[3]);
 
         // TARGETS
@@ -220,33 +245,32 @@ class LSMCR{
         // COEFFICIENTS
         regression_i();
         regression_ij();
+
+        // CONDITIONAL EXPECTATIONS
+        estimate_conditional_expectation_i();
+        estimate_conditional_expectation_ij();
     }
 
-    // Function to estimate the conditional expectation E_i[ sum_l_i+1_N {lamda3_l - lambda4_l} ] given the coefficients of the first regression
-    Matrix estimate_conditional_expectation_i() const {
-        Matrix cond_exp_i = Matrix::Zero(M, N);
-        for (std::size_t i=0; i<N; ++i){
-            cond_exp_i.col(i) = regressors_i[i] * coeff_i.col(i);
-        }
-        return cond_exp_i;
-    }
-    // Function to estimate the conditional expectation E_i[ lamda1_j - lamda2_j + sum_l_j+1_N {lambda3_l - lambda2_4} ] given the coefficients of the second regression
-    CondExp_ij estimate_conditional_expectation_ij() const {
-        CondExp_ij cond_exp_ij;
-        cond_exp_ij.reserve(N-1); // Reserve space for N-1 matrices
-        for (std::size_t i=0; i<N-1; ++i){
-            cond_exp_ij.emplace_back(M, N-1-i); // Create a new Matrix for each i
-            for (std::size_t j=i; j<N-1; ++j){
-                cond_exp_ij[i].col(j-i) = regressors_ij[i] * coeff_ij[i].col(j-i);
-            }
-        }
-        return cond_exp_ij;
-    }
 
     // Getter functions to access coefficients for testing/debugging
     const Matrix& get_coeff_i() const { return coeff_i; }
     const CondExp_ij& get_coeff_ij() const { return coeff_ij; }
 
+    CondExp_ij estimate_gamma(){
+        std::vector<Matrix> gamma(M, Matrix::Zero(N, N));
+        for (std::size_t m=0; m<M; ++m){
+            // Fill diagonal
+            gamma[m].diagonal() = cond_exp_i.row(m) + diff_lambda_1_2.row(m);
+            // Fill upper triangle
+            for (std::size_t i=0; i<N-1; ++i){
+                // Recall cond_exp_ij: fix i as the time of the expectation than we have a matrix of size (M, N-1-i) with the conditional expectation for each j>i up to N-1
+                // The rows in the upper triangle (diagonal excluded) are filled for each m with the rows cond_exp_ij[i](m,:)
+                for (std::size_t j=i+1; j<N; ++j){
+                    gamma[m](i,j) = cond_exp_ij[i](m,j-1-i);
+                }
+            }
+        }
+    }
 };
 
 
