@@ -13,19 +13,20 @@ using Ref = Eigen::Ref<Matrix>; // Specify the template argument for Eigen::Ref
 
 
 class NystromScheme {
-private:
+//private:
+public:
     // Parameters
     const std::size_t N; // Number of time steps
     const Matrix I_N;
 
     const std::size_t M; // Numbeer of Monte Carlo paths
     const Vector& time_grid; // Time grid of length N+1
-    const Matrix X0; 
+    const Matrix X0;
     const Kernel& kernel; // Kernel object
     // State Variables
     const std::unique_ptr<Matrix>& u; // u matrix, of size (M, N)
     Matrix& Z_u; // Z_u matrix, of size (M, N)
-    const std::unique_ptr<Matrix>& X_u; // X_u matrix, of size (M, N+1)
+    const std::unique_ptr<Matrix>& X_u; // X_u matrix, of size (M, N)
 
     const std::vector<Matrix>& R; // Signal matrix, vector of size M of matrices (N,N)
     const std::vector<Matrix>& Gamma; // Expectation of phi, vector of size M of matrices (N,N)
@@ -33,18 +34,19 @@ private:
     std::vector<Matrix> R_sum_Gamma; // vector of size M ofmatrices (N,N)
 
     // Operators
+    std::vector<Matrix> inv_Dt; // inverse of (I +K_t +K*_t), vector of size N of matrices (N,N)
     Matrix time_integral;
     Matrix L,U; // Kernel matrixes
     Matrix B;
+    Matrix I_B_inv; // (I_N - B)^-1
 
     Matrix a_operator; // Matrix (N,N) where each row i is the operatore to apply at time t_i
 
-    std::vector<Matrix> inv_Dt; // inverse of (I +K_t +K*_t), vector of size N of matrices (N,N)
 
 public: // constructor
     NystromScheme(const std::size_t M, const std::size_t N, const Vector& time_grid, const double X0, const Kernel& k, const std::unique_ptr<Matrix>& u, Matrix& Z_u,
                   const std::unique_ptr<Matrix>& X_u, const std::vector<Matrix>& R, const std::vector<Matrix>& Gamma)
-        : M(M), N(N),I_N(Matrix::Identity(N, N)), time_grid(time_grid), X0(Matrix::Constant(M, N+1, X0)), kernel(k), u(u), Z_u(Z_u), X_u(X_u), R(R), Gamma(Gamma)
+        : M(M), N(N),I_N(Matrix::Identity(N, N)), time_grid(time_grid), X0(Matrix::Constant(M, N, X0)), kernel(k), u(u), Z_u(Z_u), X_u(X_u), R(R), Gamma(Gamma)
     {
         // Construct Matrixes for operators that do not depend on the control variable u
         construct_time_integral();
@@ -55,14 +57,13 @@ public: // constructor
         R_sum_Gamma.reserve(M);
     }
 
-private: // Construct operators
+//private: // Construct operators
     void construct_time_integral() {
         // Each row of time_integral contains the weights to write: integral_0^t us ds = sum_{j=0}^{N-1} us * (t_{j+1} - t_j)
         Vector time_delta = time_grid.tail(N) - time_grid.head(N);
-        time_integral = Matrix::Zero(N+1, N);
-        for (std::size_t i = 1; i < N+1; ++i) {
-            // Fill the time_integral matrix by concatenating time_delta first i element with zeros
-            time_integral.row(i).head(i) = time_delta.head(i);
+        time_integral = Matrix::Zero(N, N);
+        for (std::size_t i = 0; i < N; ++i) {
+            time_integral.row(i).head(i+1) = time_delta.head(i+1);
         }
     }
     // Construct the L and U matrices based on the kernel and time grid
@@ -86,12 +87,14 @@ private: // Construct operators
         inv_Dt.reserve(N);
         inv_Dt.emplace_back((I_N + L + U).inverse());
         for(std::size_t i = 1; i < N; ++i) {
-            // Matrix Kt_i is matrix L wehere the first i columns are zero
-            Matrix Kt_i = L;
-            Kt_i.block(0, 0, N, i) = Matrix::Zero(N, i);
-            // Matrix K*_t_i is matrix U where the first i columns are zero
-            Matrix K_star_t_i = U;
-            K_star_t_i.block(0, 0, N, i) = Matrix::Zero(N, i);
+            // Matrix Kt_i is matrix L where the first i columns and i rows are zero
+            Matrix Kt_i = Matrix::Zero(N, N);
+            Kt_i.bottomRightCorner(N-i, N-i) = L.bottomRightCorner(N-i, N-i);
+
+            // Matrix K*_t_i is matrix U where the first i columns and i rows are zero
+            Matrix K_star_t_i = Matrix::Zero(N, N);
+            K_star_t_i.bottomRightCorner(N-i, N-i) = U.bottomRightCorner(N-i, N-i);
+
             // Compute the inverse of (I + Kt_i + K*_t_i)
             inv_Dt.emplace_back((I_N + Kt_i + K_star_t_i).inverse());
         }
@@ -102,10 +105,12 @@ private: // Construct operators
         a_operator = Matrix::Zero(N, N);
         for (std::size_t i = 0; i < N; ++i) {
             a_operator.row(i) = U.row(i) * inv_Dt[i];
-            for(std::size_t j = 0; j < N; ++j) {
+            for(std::size_t j = 0; j < i; ++j) {
                 B(i,j) = a_operator.row(i) * L.col(j);
             }
         }
+        // Compute the control variable u based on the Nystrom scheme
+        I_B_inv = (I_N - B).inverse();
     }
 
     // Update the state variables Z_u and X_u based on the control variable u
@@ -124,15 +129,13 @@ public:
         for (std::size_t m = 0; m < M; ++m) {
             R_sum_Gamma.emplace_back(R[m] + Gamma[m]);
         }
-        // Compute the control variable u based on the Nystrom scheme
-        const Matrix IB_inv = (I_N - B).inverse();
         // Update the control variable u based on the Nystrom scheme
         for (std::size_t m = 0; m < M; ++m) {
             Vector a(N);
             for (std::size_t i = 0; i < N; ++i) {
                 a[i] = R_sum_Gamma[m](i,i) - a_operator.row(i).dot(R_sum_Gamma[m].row(i));
             }
-            u->row(m) = (IB_inv * a).transpose();  
+            u->row(m) = (I_B_inv * a);
         }
         update_state_variables();
     }

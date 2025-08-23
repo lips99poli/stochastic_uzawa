@@ -41,6 +41,7 @@ class OUSimulator {
             }
             return BM;
         }
+        
         Matrix generateOrnsteinUhlenbeck() const {
             // Generate the Ornstein-Uhlenbeck process paths based on the Brownian motion
             Matrix OU(BM.rows(), BM.cols());
@@ -113,7 +114,6 @@ class OUSimulator {
             // Print the OU matrix for debugging purposes
             std::cout << "Ornstein-Uhlenbeck process paths:\n" << OU << std::endl;
         }
-
 };
 
 #endif

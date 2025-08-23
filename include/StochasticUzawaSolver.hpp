@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <memory>
+#include <iostream>
 #include <Eigen/Dense>
 //create aliases for Eigen types
 using Matrix = Eigen::MatrixXd;
@@ -47,6 +48,8 @@ class StochasticUzawaSolver {
     std::unique_ptr<Matrix> X_u; // State vector
     Matrix Z_u; // Transient price impact
     std::vector<std::unique_ptr<Matrix>> lambda; // 4 Lagrange multipliers
+    
+    
     std::vector<double> slackness; // Slackness variables for convergence check
 
     // Cycle tools
@@ -99,20 +102,19 @@ class StochasticUzawaSolver {
         *lambda[3] += adaptive_learning * (*X_u).binaryExpr(constraints[3],gradient_update);
     }
 
-    auto compute_slackness() const {
+    auto compute_slackness() {
         std::vector<Matrix> slackness_m(4,Matrix::Zero(params.M, N));
-        slackness_m[0] = (constraints[0] - *u).cwiseProduct(lambda[0]->leftCols(N));
-        slackness_m[1] = (*u - constraints[1]).cwiseProduct(lambda[1]->leftCols(N));
-        slackness_m[2] = (constraints[2] - *X_u).cwiseProduct(lambda[2]->leftCols(N));
-        slackness_m[3] = (*X_u - constraints[3]).cwiseProduct(lambda[3]->leftCols(N));
+        slackness_m[0] = (constraints[0] - *u).cwiseProduct(*lambda[0]);
+        slackness_m[1] = (*u - constraints[1]).cwiseProduct(*lambda[1]);
+        slackness_m[2] = (constraints[2] - *X_u).cwiseProduct(*lambda[2]);
+        slackness_m[3] = (*X_u - constraints[3]).cwiseProduct(*lambda[3]);
 
         std::vector<Vector> slackness_avg_paths(4, Vector::Zero(N));
         // Each slackness variable is a vector containing the sum of all the rows of the corresponding slackness_m matrix
         for (std::size_t i = 0; i < slackness_m.size(); ++i) {
             slackness_avg_paths[i] = slackness_m[i].colwise().sum() / static_cast<double>(params.M);
         }
-        // Integrate the slackness avarage paths
-        std::vector<double> slackness (4, 0.0);
+        // Integrate the slackness average paths
         for (std::size_t i = 0; i < slackness_avg_paths.size(); ++i) {
             slackness[i] = slackness_avg_paths[i].sum() * time_delta; // Left rectangle rule
         }
@@ -138,11 +140,16 @@ class StochasticUzawaSolver {
         ,u( std::make_unique<Matrix>(Matrix::Zero(params.M, params.N)) )
         ,X_u( std::make_unique<Matrix>(Matrix::Zero(params.M, params.N)) )
         ,Z_u( Matrix::Zero(params.M, params.N) )
-        ,lambda(std::vector<std::unique_ptr<Matrix>>(4, std::make_unique<Matrix>(Matrix::Zero(params.M, params.N+1)))) // Initialize lambda vector with nullptrs
+        ,lambda(4) // Initialize lambda vector with 4 elements
         ,slackness(std::vector<double>(4, std::numeric_limits<double>::infinity())) // Initialize slackness variables to infinity
         // Cycle tools
 
     {
+        // Initialize lambda vector elements
+        for(std::size_t i = 0; i < 4; ++i) {
+            lambda[i] = std::make_unique<Matrix>(Matrix::Zero(params.M, params.N));
+        }
+        
         //launch the simulation of the OU process
         OUSimulator ou_simulator(ou_params, time_grid, params.M);
         // Fill the R matrix based on the OU parameters

@@ -29,15 +29,6 @@ Matrix LaguerrePolynomial(const Vector& x, const int degree);
 // The output of this regression are (d2+1  2) coefficients for each time step couples (i,j)
 //  so it is a matrix of size ((d2+1  2), N-2, N-1)
 
-
-
-// NOTE: SALVARE GLI SVILUPPI DI LAGUERRE DELLE 3 VARIABILI, DATO D E D' LI SVILUPPO TUTTI E TRE FINO A MAX(D/3,D'/3,1), QUANDO FARò L'OTTIMIZZAZIONE NON ANDRò MAI OLTRE QUESTO VALORE
-// li salvo come membri e poi pesco da li sia per la regressione che per la stima
-// li salvo in dei vec di vec/array di dim: con m,i accedo all'espansione fino al grado dim 
-// meglio sostituire anche la mappa con questi vec di vec/array con un vec di vec di vec/array coì faccio il tensore. Questo perchè ho accesso più rapido.
-// poi ci sono da fare le due funzioni di stima
-
-
 // la time grid è lunga (N+1) e contiene i tempi da 0 a T, ma T a noi non interessa, infatti le variabili di stato sono lunghe N cioè valorizzate sui tempi 0,...,T*(N-1)/N
 // la regressione ha senso fino all'ultimo valore delle variabili di stato e con le info fino al precedente -> output indici 1 a N-1 e input da 0 a N-2 (entrambi lunghi N-1)
 
@@ -53,10 +44,10 @@ class LSMCR{
     const Matrix& alpha; // Alpha matrix, of size (M, N)
     const std::unique_ptr<Matrix>& Z_u; // Z_u matrix, of size (M, N)
     const std::unique_ptr<Matrix>& X_u; // X_u matrix, of size (M, N)
-    const std::vector<std::unique_ptr<Matrix>>& lambda; // Lambda vector, of size (4, M, N+1)
+    const std::vector<std::unique_ptr<Matrix>>& lambda; // Lambda vector, of size (4, M, N)
 
-    Matrix diff_lambda_1_2; // Difference lambda1 - lambda2, of size (M, N+1)
-    Matrix diff_lambda_3_4; // Difference lambda3 - lambda4, of size (M, N+1)
+    Matrix diff_lambda_1_2; // Difference lambda1 - lambda2, of size (M, N)
+    Matrix diff_lambda_3_4; // Difference lambda3 - lambda4, of size (M, N)
 
     // Laguerre polynomials for the three variables of state, vector length N containinig matrixes of size (M, max(d1,d2)+1), (M, max(d1,d2)+1), (M, max(d1,d2)+1)
     std::vector<Matrix> laguerre_alpha; // Laguerre polynomials for alpha, of size (M, max(d1,d2)+1)
@@ -82,14 +73,17 @@ class LSMCR{
 
     // Dubbio: non ho capito da quando inizia la regressione: i=0 o i=1?
 
+    // Note: lambda1 and lambda2 are of length N referring to times 0,...,T*(N-1)/N
+    //       lambda3 and lambda4 are of length N referring to times 1,...,T
+
     // This function will precompute the target vector for the first regression
     void precompute_target_i(){
         target_i = Matrix::Zero(M, N); // Initialize the target vector for the first regression
         // Compute cumulative sum from right to left for efficiency
         Vector cumsum = Vector::Zero(M);
-        for (std::size_t j=N; j>=1; --j) {
+        for (int j = static_cast<int>(N)-1; j >= 0; --j) {
             cumsum += diff_lambda_3_4.col(j); // Add current column to cumulative sum
-            target_i.col(j-1) = cumsum; // Store for time step i-1
+            target_i.col(j) = cumsum; // Store for time step j
         }
     }
 
@@ -257,19 +251,20 @@ class LSMCR{
     const CondExp_ij& get_coeff_ij() const { return coeff_ij; }
 
     CondExp_ij estimate_gamma(){
-        std::vector<Matrix> gamma(M, Matrix::Zero(N, N));
+        std::vector<Matrix> Gamma(M, Matrix::Zero(N, N));
         for (std::size_t m=0; m<M; ++m){
             // Fill diagonal
-            gamma[m].diagonal() = cond_exp_i.row(m) + diff_lambda_1_2.row(m);
+            Gamma[m].diagonal() = cond_exp_i.row(m) + diff_lambda_1_2.row(m);
             // Fill upper triangle
             for (std::size_t i=0; i<N-1; ++i){
                 // Recall cond_exp_ij: fix i as the time of the expectation than we have a matrix of size (M, N-1-i) with the conditional expectation for each j>i up to N-1
                 // The rows in the upper triangle (diagonal excluded) are filled for each m with the rows cond_exp_ij[i](m,:)
                 for (std::size_t j=i+1; j<N; ++j){
-                    gamma[m](i,j) = cond_exp_ij[i](m,j-1-i);
+                    Gamma[m](i,j) = cond_exp_ij[i](m,j-1-i);
                 }
             }
         }
+        return Gamma;
     }
 };
 
