@@ -16,7 +16,7 @@ using Matrix = Eigen::MatrixXd;
 using Vector = Eigen::VectorXd;
 using Ref = Eigen::Ref<Matrix>;
 
-using CondExp_ij = std::vector<Matrix>; // Map to store conditional expectations for each time step couple (i,j)
+using Mat_Vec = std::vector<Matrix>; // Map to store conditional expectations for each time step couple (i,j)
 
 // Forward declaration of LaguerrePolynomial function
 Matrix LaguerrePolynomial(const Vector& x, const int degree);
@@ -34,6 +34,8 @@ Matrix LaguerrePolynomial(const Vector& x, const int degree);
 
 class LSMCR{
     private:
+
+    public:
     const std::size_t d1; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the first regression
     const std::size_t d2; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the second regression
     const std::size_t comb_upto_d1, comb_upto_d2;
@@ -50,25 +52,25 @@ class LSMCR{
     Matrix diff_lambda_3_4; // Difference lambda3 - lambda4, of size (M, N)
 
     // Laguerre polynomials for the three variables of state, vector length N containinig matrixes of size (M, max(d1,d2)+1), (M, max(d1,d2)+1), (M, max(d1,d2)+1)
-    std::vector<Matrix> laguerre_alpha; // Laguerre polynomials for alpha, of size (M, max(d1,d2)+1)
-    std::vector<Matrix> laguerre_Z_u; // Laguerre polynomials for Z_u, of size (M, max(d1,d2)+1)
-    std::vector<Matrix> laguerre_X_u; // Laguerre polynomials for X_u, of size (M, max(d1,d2)+1)
+    Mat_Vec laguerre_alpha; // Laguerre polynomials for alpha, of size (M, max(d1,d2)+1)
+    Mat_Vec laguerre_Z_u; // Laguerre polynomials for Z_u, of size (M, max(d1,d2)+1)
+    Mat_Vec laguerre_X_u; // Laguerre polynomials for X_u, of size (M, max(d1,d2)+1)
 
     // Targets for the two regressions
     Matrix target_i; // Target matrix for the first regression, of size (N,M): for every timestamp i I have a target vector of size M corresponding to time i+1
     Matrix target_ij; // Target matrix for the second regression, of size (N,M): for every timestamp couple j>i (i indicates the time of regressors) I have a target vector of size M
 
     // Regressors for the 2 regressions
-    std::vector<Matrix> regressors_i; // Vector of length N where each element is the matrix PHI_i of size((d+3  3), M) 
-    std::vector<Matrix> regressors_ij; // Vector of length N where each element is the matrix PHI_i of size((d+3  3), M)
+    Mat_Vec regressors_i; // Vector of length N where each element is the matrix PHI_i of size((d+3  3), M) 
+    Mat_Vec regressors_ij; // Vector of length N where each element is the matrix PHI_i of size((d+3  3), M)
 
     // Coefficients for the two regressions
     Matrix coeff_i; // Coefficients matrix for the first regression, of size ((d1+3  3), N-1)
-    CondExp_ij coeff_ij; // Coefficients map for the second regression, of size (N-1,(d2+3  3),N-1-i): for each i going from 0 to N-2 i do regression for target at all j in [i+1,N-1] and i get (d2+3  3) coefficientes 
+    Mat_Vec coeff_ij; // Coefficients map for the second regression, of size (N-1,(d2+3  3),N-1-i): for each i going from 0 to N-2 i do regression for target at all j in [i+1,N-1] and i get (d2+3  3) coefficientes 
 
     // Estimates for the two conditional expectations
     Matrix cond_exp_i;
-    CondExp_ij cond_exp_ij;
+    Mat_Vec cond_exp_ij;
 
 
     // Dubbio: non ho capito da quando inizia la regressione: i=0 o i=1?
@@ -99,7 +101,6 @@ class LSMCR{
     // This function will precompute the regressors for the first regression
     void precompute_regressors_i(){
         regressors_i.clear();
-        regressors_i.reserve(N); // Reserve space to avoid reallocations
         for(std::size_t i=0; i<N; ++i){
             // The matrix PHI_i will be of dimension Mx(d1+3 choose 3), where M is the number of sample paths.
             // Each column of PHI_i will contain all possible combinations of multiplication of Laguerre polynomials of the three variables such that the sum of the degrees is less than or equal to d1.
@@ -123,7 +124,6 @@ class LSMCR{
     // This function will precompute the regressors for the second regression
     void precompute_regressors_ij(){
         regressors_ij.clear();
-        regressors_ij.reserve(N); // Reserve space to avoid reallocations
         for(std::size_t i=0; i<N-1; ++i){
             // The matrix PHI_i will be of dimension Mx(d2+3 choose 3), where M is the number of sample paths.
             // Each column of PHI_i will contain all possible combinations of multiplication of Laguerre polynomials of the three variables such that the sum of the degrees is less than or equal to d2.
@@ -144,14 +144,12 @@ class LSMCR{
         }
     }
 
+
     // Function to compute the coefficients of the first LSMCR regression
     void regression_i(){
         // The Linear Regression will solve for each time step i the following equation: PHI_i * coeffs_i = Y_i giving as output coeffs_i of size (d1+3  3) x 1
         // The final output will be the matrix coeffs_i of size ((d1+3  3), N)
         
-        // Initialize the output matrix for coefficients
-        coeff_i = Matrix::Zero(comb_upto_d1, N); // (d1+1 choose 2) coefficients for each time step i
-
         // Cicle over the time steps i from 0 to N-1
         for (std::size_t i = 0; i < N; ++i) {
             // Construct matrix PHI_i
@@ -206,6 +204,9 @@ class LSMCR{
         laguerre_Z_u.reserve(N);
         laguerre_X_u.reserve(N);
         regressors_i.reserve(N);
+        regressors_ij.reserve(N);
+        // Allocate container for coefficients
+        coeff_i = Matrix::Zero(comb_upto_d1, N); // (d1+1 choose 2) coefficients for each time step i
         coeff_ij.reserve(N-1);
     }
 
@@ -248,10 +249,10 @@ class LSMCR{
 
     // Getter functions to access coefficients for testing/debugging
     const Matrix& get_coeff_i() const { return coeff_i; }
-    const CondExp_ij& get_coeff_ij() const { return coeff_ij; }
+    const Mat_Vec& get_coeff_ij() const { return coeff_ij; }
 
-    CondExp_ij estimate_gamma(){
-        std::vector<Matrix> Gamma(M, Matrix::Zero(N, N));
+    Mat_Vec estimate_gamma(){
+        Mat_Vec Gamma(M, Matrix::Zero(N, N));
         for (std::size_t m=0; m<M; ++m){
             // Fill diagonal
             Gamma[m].diagonal() = cond_exp_i.row(m) + diff_lambda_1_2.row(m);
