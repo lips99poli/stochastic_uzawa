@@ -41,10 +41,11 @@ class LSMCR{
     const std::size_t comb_upto_d1, comb_upto_d2;
 
     const std::size_t N; // Number of time steps
+    const double time_delta;
     const std::size_t M; // Number of sample paths
 
     const Matrix& alpha; // Alpha matrix, of size (M, N)
-    const std::unique_ptr<Matrix>& Z_u; // Z_u matrix, of size (M, N)
+    const Matrix& Z_u; // Z_u matrix, of size (M, N)
     const std::unique_ptr<Matrix>& X_u; // X_u matrix, of size (M, N)
     const std::vector<std::unique_ptr<Matrix>>& lambda; // Lambda vector, of size (4, M, N)
 
@@ -85,7 +86,7 @@ class LSMCR{
         Vector cumsum = Vector::Zero(M);
         for (int j = static_cast<int>(N)-1; j >= 0; --j) {
             cumsum += diff_lambda_3_4.col(j); // Add current column to cumulative sum
-            target_i.col(j) = cumsum; // Store for time step j
+            target_i.col(j) = cumsum * time_delta; // Store for time step j
         }
     }
 
@@ -183,7 +184,7 @@ class LSMCR{
     }
     // Function to estimate the conditional expectation E_i[ lamda1_j - lamda2_j + sum_l_j+1_N {lambda3_l - lambda2_4} ] given the coefficients of the second regression
     void estimate_conditional_expectation_ij() {
-        cond_exp_ij.reserve(N-1); // Reserve space for N-1 matrices
+        cond_exp_ij.clear(); // Reserve space for N-1 matrices
         for (std::size_t i=0; i<N-1; ++i){
             cond_exp_ij.emplace_back(M, N-1-i); // Create a new Matrix for each i
             for (std::size_t j=i; j<N-1; ++j){
@@ -193,11 +194,11 @@ class LSMCR{
     }
 
     public:
-    LSMCR(const std::size_t d1, const std::size_t d2, const std::size_t N, const std::size_t M, const Matrix& alpha, const std::unique_ptr<Matrix>& Z_u, const std::unique_ptr<Matrix>& X_u, const std::vector<std::unique_ptr<Matrix>>& lambda)
-        : d1(d1), d2(d2), comb_upto_d1((d1+3)*(d1+2)*(d1+1)/6), comb_upto_d2((d2+3)*(d2+2)*(d2+1)/6), N(N), M(M), 
+    LSMCR(const std::size_t d1, const std::size_t d2, const std::size_t N, const double time_delta, const std::size_t M, const Matrix& alpha, const Matrix& Z_u, const std::unique_ptr<Matrix>& X_u, const std::vector<std::unique_ptr<Matrix>>& lambda)
+        : d1(d1), d2(d2), comb_upto_d1((d1+3)*(d1+2)*(d1+1)/6), comb_upto_d2((d2+3)*(d2+2)*(d2+1)/6), N(N), time_delta(time_delta), M(M), 
           alpha(alpha), Z_u(Z_u), X_u(X_u), lambda(lambda)
         {
-        if (alpha.size() == 0 || !Z_u || !X_u) {
+        if (alpha.size() == 0|| Z_u.size() == 0 || !X_u) {
             throw std::invalid_argument("Invalid input for state variables.");
         }
         laguerre_alpha.reserve(N);
@@ -220,7 +221,7 @@ class LSMCR{
         int degree = std::max(d1, d2);
         for (std::size_t i = 0; i < N; ++i) {
             laguerre_alpha.push_back(LaguerrePolynomial(alpha.col(i), degree));
-            laguerre_Z_u.push_back(LaguerrePolynomial((*Z_u).col(i), degree));
+            laguerre_Z_u.push_back(LaguerrePolynomial(Z_u.col(i), degree));
             laguerre_X_u.push_back(LaguerrePolynomial((*X_u).col(i), degree));
         }
         
@@ -267,6 +268,7 @@ class LSMCR{
         }
         return Gamma;
     }
+
 };
 
 
