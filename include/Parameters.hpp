@@ -40,6 +40,7 @@ struct OUParams {
 };
 
 struct ConstraintsParams{
+    double X0; // Initial inventory
     double u_min; // Minimum trading rate
     double u_max;  // Maximum trading rate
     double X_u_min; // Minimum inventory
