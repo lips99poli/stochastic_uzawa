@@ -1,15 +1,7 @@
 #ifndef CONSTRAINTS_HPP
 #define CONSTRAINTS_HPP
 
-#include <vector>
-#include <Eigen/Dense>
-
-using Matrix = Eigen::MatrixXd;
-using Vector = Eigen::VectorXd;
-using Ref = Eigen::Ref<Matrix>; // Specify the template argument for Eigen::Ref
-
-using Mat_Vec = std::vector<Matrix>; // Map to store conditional expectations for each time step couple (i,j)
-
+#include "Parameters.hpp"
 
 class Constraints{
 private:
@@ -25,11 +17,11 @@ public:
           terminal_liquidation(terminal_liquidation), 
           stop_trad_price_lb(stop_trad_price_lb), price_lb(price_lb) {}
 
-    Mat_Vec compute_constraints(const Matrix& price){
+    MatVec compute_constraints(const Matrix& price){
         const std::size_t M = price.rows(); // Number of Monte Carlo paths
         const std::size_t N = price.cols(); // Number of time steps
         // Compute the constraints matrix: each of the M rows corresponds to the constraints path for the same row in the price simulation matrix
-        Mat_Vec c;
+        MatVec c;
         c.reserve(4);
         c.emplace_back(Matrix::Constant(M, N, u_min)); // u_min constraint
         c.emplace_back(Matrix::Constant(M, N, u_max)); // u_max constraint
