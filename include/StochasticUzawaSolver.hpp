@@ -6,75 +6,61 @@
 #include <iostream>
 #include <fstream>
 #include <limits>
-#include <Eigen/Dense>
-//create aliases for Eigen types
-using Matrix = Eigen::MatrixXd;
-using Vector = Eigen::VectorXd;
-using Ref = Eigen::Ref<Matrix>; // Specify the template argument for Eigen::Ref
+#include <string>
+#include <stdexcept>
+#include "CommonTypes.hpp"
 
-using Mat_Vec = std::vector<Matrix>; // Map to store conditional expectations for each time step couple (i,j)
-
-
-#include "NumericSchemeParams.hpp"
+// Include order: fundamental types first, then dependent classes
+#include "Parameters.hpp"
 #include "Kernel.hpp"
-#include "OUParams.hpp"
+#include "Constraints.hpp"
 #include "OUSimulator.hpp"
 #include "LSMCR.hpp"
 #include "NystromScheme.hpp"
 
 
 class StochasticUzawaSolver {
-    private:
-    std::ostream* output_stream; // Output stream for writing results
-
     public:
 
-    double X0;
+    // Parameters and related objects
+    Parameters params;
+    const NumericSchemeParams& numeric_params; // Reference to the numeric scheme parameters
+    const OUParams& ou_params; // OU process parameters
+    const ConstraintsParams& constraints_params; // Constraints parameters
+    const KernelParams& kernel_params; // Kernel parameters
 
-    const NumericSchemeParams params; // Reference to the numeric scheme parameters
+    // Time parameters
     const double time_delta; // Time step size
     const std::size_t N; // Number of time steps
     const Vector time_grid; // Time grid
 
-    const Kernel& kernel; // Kernel object
+    // Simulation parameter
+    const std::size_t M; // Number of Monte Carlo paths
 
-    const OUParams ou_params; // OU process parameters
+    // Control problem design
+    std::unique_ptr<Kernel> kernel; // Kernel object
+    Constraints constraints_obj; // 4 Constraints matrix
+    MatVec constraints;
     
-    Matrix alpha;
-    Mat_Vec R; // Signal matrix
-    
-    Mat_Vec Gamma; // Expectation of phi
+    // Signal related objects
+    MatVec Gamma; // Expectation of phi
+    Matrix alpha; // Conditional expectation of integral of finite variation part of the price
+    MatVec R; // Conditional expectations of alpha
+    Matrix price; // Price matrix
 
-    const Mat_Vec constraints; // 4 Constraints matrix
-
-    // The output u, X_u and lamda are stored in the heap
+    // State variables
     std::unique_ptr<Matrix> u; // Control vector
     std::unique_ptr<Matrix> X_u; // State vector
     Matrix Z_u; // Transient price impact
     std::vector<std::unique_ptr<Matrix>> lambda; // 4 Lagrange multipliers
+    // Note that outputs u, X_u and lambda are stored in the heap
     
+    // Cycle tools
+    std::size_t n;
     std::vector<double> slackness; // Slackness variables for convergence check
 
-    std::string mode;
-
-    Mat_Vec compute_constraints(const int M) { //questo èda estendere: i constraint possono essere di vario tipo: vorrei implementare i 4 del paper e poi lasciare lo user libero di dare una csustom function che calcola ai_t come funzione del prezzo nei tempi da 0 a t
-        // Compute the constraints matrix: each of the M rows corresponds to the constraints path for the same row in the price simulation matrix
-        Mat_Vec constraints(4, Matrix::Zero(M, N)); // 4 constraints, each of size MxN
-        for (int m = 0; m < M; ++m) {
-            for (int i = 0; i < N; ++i) {
-                constraints[0](m, i) = -5.0;
-                constraints[1](m, i) = 5.0;
-                if(i<N-1){
-                    constraints[2](m, i) = -100.0;
-                    constraints[3](m, i) = 100.0;
-                }
-            }
-        }
-        return constraints;
-    }
-
     void gradient_update(std::size_t n) {
-        double adaptive_learning = params.delta / std::pow(n + 1, params.beta);
+        double adaptive_learning = numeric_params.delta / std::pow(n + 1, numeric_params.beta);
         *lambda[0] += adaptive_learning * (constraints[0] - *u);
         *lambda[1] += adaptive_learning * (*u - constraints[1]);
         *lambda[2] += adaptive_learning * (constraints[2] - *X_u);
@@ -88,7 +74,7 @@ class StochasticUzawaSolver {
     }
 
     auto compute_slackness() {
-        Mat_Vec slackness_m(4,Matrix::Zero(params.M, N));
+        MatVec slackness_m(4,Matrix::Zero(M, N));
         slackness_m[0] = (constraints[0] - *u).cwiseProduct(*lambda[0]);
         slackness_m[1] = (*u - constraints[1]).cwiseProduct(*lambda[1]);
         slackness_m[2] = (constraints[2] - *X_u).cwiseProduct(*lambda[2]);
@@ -97,16 +83,7 @@ class StochasticUzawaSolver {
         std::vector<Vector> slackness_avg_paths(4, Vector::Zero(N));
         // Each slackness variable is a vector containing the sum of all the rows of the corresponding slackness_m matrix
         for (std::size_t i = 0; i < slackness_m.size(); ++i) {
-            slackness_avg_paths[i] = slackness_m[i].colwise().sum() / static_cast<double>(params.M);
-        }
-        
-        // Debug print slackness_avg_paths
-        if(mode=="verbose"){
-            *output_stream << "Debug - Slackness average paths:" << std::endl;
-            for (std::size_t i = 0; i < slackness_avg_paths.size(); ++i) {
-                *output_stream << "slackness_avg_paths[" << i << "]: " << slackness_avg_paths[i].transpose() << std::endl;
-            }
-            *output_stream << std::endl;
+            slackness_avg_paths[i] = slackness_m[i].colwise().sum() / static_cast<double>(M);
         }
         
         // Integrate the slackness average paths
@@ -114,83 +91,84 @@ class StochasticUzawaSolver {
             //slackness[i] = std::abs(slackness_avg_paths[i].sum() * time_delta); // Left rectangle rule
             slackness[i] = slackness_avg_paths[i].sum() * time_delta; // Left rectangle rule
         }
-
-        if(mode=="verbose"){
-            // print the slackness values
-            *output_stream << "Current slackness values: ";
-            for (const auto& s : slackness) {
-                *output_stream << s << " ";
-            }
-            *output_stream << std::endl;
-        }
-
         return *std::max_element(slackness.begin(), slackness.end()); // Return the maximum slackness iterator
-    }
-
-    void print_variables(std::size_t iteration) {
-        *output_stream << "=== ITERATION " << iteration << " VARIABLES ===" << std::endl;
-        
-        *output_stream << "u matrix:" << std::endl;
-        *output_stream << *(u) << std::endl << std::endl;
-        
-        *output_stream << "X_u matrix:" << std::endl;
-        *output_stream << *(X_u) << std::endl << std::endl;
-        
-        *output_stream << "Lambda matrices:" << std::endl;
-        for (size_t i = 0; i < lambda.size(); ++i) {
-            *output_stream << "Lambda[" << i << "]:" << std::endl;
-            *output_stream << *(lambda[i]) << std::endl << std::endl;
-        }
-        
-        *output_stream << "Gamma matrices:" << std::endl;
-        for (size_t i = 0; i < Gamma.size(); ++i) {
-            *output_stream << "Gamma[" << i << "]:" << std::endl;
-            *output_stream << Gamma[i] << std::endl << std::endl;
-        }
-        
-        *output_stream << "========================" << std::endl << std::endl;
     }
 
 
     public:
     // Note that variables are of time length N, whereas multipliers are of time length N+1
-    StochasticUzawaSolver(const NumericSchemeParams& params, const Kernel& k, const OUParams& ou_params, std::ostream* output = &std::cout, const double X0 = -5, std::string mode = "verbose") :
-        // Output stream
-        output_stream(output)
-        ,mode(mode)
-        // Numeric scheme parameters
-        ,params(params)
-        ,time_delta(params.T / (params.N))
-        ,N(params.N) // Number of time steps
-        ,time_grid(Vector::LinSpaced(params.N+1, 0, params.T)) //see (3.1) paper
-        ,kernel(k)
-        ,ou_params(ou_params)
-        // Control problem parameters
-        ,constraints(compute_constraints(params.M))
-        // Control Variables and Lagrange Multipliers
-        ,u( std::make_unique<Matrix>(Matrix::Zero(params.M, params.N)) )
-        ,X0(X0)
-        ,X_u( std::make_unique<Matrix>(Matrix::Constant(params.M, params.N,X0)) )
-        ,Z_u( Matrix::Zero(params.M, params.N) )
-        ,lambda(4) // Initialize lambda vector with 4 elements
-        ,slackness(std::vector<double>(4, std::numeric_limits<double>::infinity())) // Initialize slackness variables to infinity
-        // Cycle tools
+    StochasticUzawaSolver(const std::string& filename = "data/Parameters.pot") :
+        params(filename),
+
+        // Split the params object into its components for easier access
+        numeric_params(params.get_numeric_params()),
+        ou_params(params.get_ou_params()),
+        constraints_params(params.get_constraints_params()),
+        kernel_params(params.get_kernel_params()),
+
+        // Constraint class
+        constraints_obj(constraints_params.X0, 
+            constraints_params.u_min, constraints_params.u_max, 
+            constraints_params.X_u_min, constraints_params.X_u_max, 
+            constraints_params.terminal_liquidation, 
+            constraints_params.stop_trad_price_lb, constraints_params.price_lb),
+
+        // Time parameters
+        time_delta(numeric_params.T / (numeric_params.N)),
+        N(numeric_params.N), // Number of time steps
+        time_grid(Vector::LinSpaced(N+1, 0, numeric_params.T)), //see (3.1) paper
+
+        // Number of Monte Carlo paths
+        M(numeric_params.M),
+
+        // Control Variables
+        u( std::make_unique<Matrix>(Matrix::Zero(M, N)) ),
+        X_u( std::make_unique<Matrix>(Matrix::Constant(M, N, constraints_params.X0)) ),
+        Z_u( Matrix::Zero(M, N) ),
+
+        // Lagrange Multipliers
+        lambda(4), // Initialize lambda vector with 4 elements
+        slackness(std::vector<double>(4, std::numeric_limits<double>::infinity())) // Initialize slackness variables to infinity
 
     {
-        // Initialize lambda vector elements
-        for(std::size_t i = 0; i < 4; ++i) {
-            lambda[i] = std::make_unique<Matrix>(Matrix::Zero(params.M, params.N));
+        // Create the appropriate kernel based on the type string
+        if (kernel_params.kernel_type == "exp") {
+            if (kernel_params.kernel_parameters.size() != 2) {
+                throw std::invalid_argument("Exponential kernel requires exactly 2 parameters: {c, ro}");
+            }
+            kernel = std::make_unique<ExpKernel>(kernel_params.kernel_parameters[0], kernel_params.kernel_parameters[1]);
+        } else if (kernel_params.kernel_type == "frac") {
+            if (kernel_params.kernel_parameters.size() != 2) {
+                throw std::invalid_argument("Fractional kernel requires exactly 2 parameters: {c, alpha}");
+            }
+            kernel = std::make_unique<FracKernel>(kernel_params.kernel_parameters[0], kernel_params.kernel_parameters[1]);
+        } else {
+            throw std::invalid_argument("Invalid kernel type: " + kernel_params.kernel_type + 
+                                      ". Supported types are: 'exp' and 'frac'");
         }
         
-        //launch the simulation of the OU process
-        OUSimulator ou_simulator(ou_params, time_grid, params.M);
+        // Initialize lambda vector elements
+        for(std::size_t i = 0; i < 4; ++i) {
+            lambda[i] = std::make_unique<Matrix>(Matrix::Zero(M, N));
+        }
+        
+        // Initialize gamma to vector of size M of matrices (N,N)
+        Gamma.resize(M, Matrix::Zero(N, N));
+    }
+
+    // Simulate signal
+    Matrix simulate_signal(){
+        // Launch the simulation of the OU process
+        OUSimulator ou_simulator(ou_params, time_grid, M);
         // Fill the alpha matrix based on the OU parameters
         alpha = ou_simulator.getAlpha();
         // Fill the R matrix based on the OU parameters
         R = ou_simulator.getR();
-        // Initialize gamma to vector of size M of matrices (N,N)
-        Gamma.resize(params.M, Matrix::Zero(params.N, params.N));
+        price = ou_simulator.getPrice();
+        constraints = constraints_obj.compute_constraints(price);
+        return price;
     }
+
 
     // Implement the Uzawa algorithm to solve the control problem
     // This is a placeholder for the actual Uzawa algorithm implementation
@@ -205,20 +183,17 @@ class StochasticUzawaSolver {
         // Initialize LSMCR structure
         const std::size_t d1 = 1; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the first regression
         const std::size_t d2 = 1; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the second regression
-        LSMCR lsmcr(d1, d2, N, time_delta, params.M, alpha, Z_u, X_u, lambda);
+        LSMCR lsmcr(d1, d2, N, time_delta, M, alpha, Z_u, X_u, lambda);
 
         // Initialize Nystrom Scheme structure
-        NystromScheme nystrom_scheme(params.M, params.N, time_grid, X0, kernel, u, Z_u, X_u, R, Gamma);
-        if(mode=="verbose"){
-            nystrom_scheme.print_operators(*output_stream);
-        }
+        NystromScheme nystrom_scheme(M, N, time_grid, constraints_params.X0, *kernel, u, Z_u, X_u, R, Gamma);
 
         // Initialize slackness check variable and check it is correctly initialized
         auto max_slackness = *std::max_element(slackness.begin(), slackness.end());
 
         // Main loop for the Uzawa algorithm
-        std::size_t n = 0; // Iteration counter
-        while (max_slackness > params.epsilon && n < params.D){
+        n = 0; // Iteration counter
+        while (max_slackness > numeric_params.epsilon && n < numeric_params.D){
             // 1. Gradient update lambda
             gradient_update(n);
 
@@ -231,37 +206,10 @@ class StochasticUzawaSolver {
 
             // 4. Update Slackness Variables to check if convergence is reached
             max_slackness = compute_slackness();
-
-            if(mode=="big"){
-                if(n%10==0) {
-                    // Debug print slackness
-                    *output_stream << "Iteration " << n << ", slackness values: ";
-                    for (size_t i = 0; i < slackness.size(); ++i) {
-                        *output_stream << slackness[i];
-                        if (i < slackness.size() - 1) *output_stream << ", ";
-                    }
-                    *output_stream << std::endl;
-                    
-                    // Print last column of first 10 rows of X_u
-                    *output_stream << "Last column of first 10 rows of X_u: ";
-                    for (int m = 0; m < std::min(10, (int)params.M); ++m) {
-                        *output_stream << (*X_u)(m, params.N-1);
-                        if (m < std::min(10, (int)params.M) - 1) *output_stream << " ";
-                    }
-                    *output_stream << std::endl;
-                }
-            }
-            if(mode=="verbose"){
-            // Print all variables for verbose output
-                print_variables(n);
-            }
            
             // Increment the iteration counter
             ++n;
         }
-        // print iterations
-        *output_stream << "Performed " << n << " iterations." << std::endl;
-        
     }
 };
 
