@@ -30,6 +30,8 @@ struct OUParams {
     double psi;       // Volatility of the process
     double T;               // Total time duration for the simulation
     std::size_t N;               // T/N is the time step size
+    int seed1; // Seed for OU process generation
+    int seed2; // Seed for price process generation
 };
 
 struct ConstraintsParams{
@@ -108,6 +110,8 @@ private:
         // Set T and N for OU params (these might be computed or set elsewhere)
         ou_params.T = numeric_params.T;
         ou_params.N = numeric_params.N;
+        ou_params.seed1 = input_file("seed1", -1); // Default to -1 for random seed
+        ou_params.seed2 = input_file("seed2", -1); // Default to -1 for random seed
         
         // Read Constraints Parameters
         constraints_params.X0 = input_file("X0", -100.0);

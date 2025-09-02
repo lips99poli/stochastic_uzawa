@@ -131,9 +131,6 @@ class OUSimulator {
             }
         }
 
-
-
-
     public:
         /**
          * @brief Constructor for OUSimulator
@@ -146,14 +143,13 @@ class OUSimulator {
          * Note: When seed1 or seed2 is -1, a random seed based on current time is generated.
          * This ensures different results for each run unless explicit seeds are provided.
          */
-        OUSimulator(const OUParams& ou_params, const Vector& time_grid, const std::size_t M, 
-                   int seed1 = -1, int seed2 = -1):
+        OUSimulator(const OUParams& ou_params, const Vector& time_grid, const std::size_t M):
             ou_params(ou_params)
             ,time_grid(time_grid)
             ,time_delta(time_grid.tail(time_grid.size() - 1) - time_grid.head(time_grid.size() - 1)) // Compute time step size
             ,time_integral(construct_time_integral())
-            ,actual_seed1(seed1 == -1 ? generate_random_seed() : seed1)
-            ,actual_seed2(seed2 == -1 ? generate_random_seed() + 1 : seed2)
+            ,actual_seed1(ou_params.seed1 == -1 ? generate_random_seed() : ou_params.seed1)
+            ,actual_seed2(ou_params.seed2 == -1 ? generate_random_seed() + 1 : ou_params.seed2)
             ,OU(generateOrnsteinUhlenbeck(M, actual_seed1)) // Generate Ornstein-Uhlenbeck process paths
             ,Pt(compute_Pt())
             ,price(compute_price(actual_seed2))
