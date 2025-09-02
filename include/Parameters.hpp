@@ -1,18 +1,11 @@
 #ifndef PARAMETERS_HPP
 #define PARAMETERS_HPP
 
-#include <vector>
 #include <string>
 #include <iostream>
-#include <cmath>
-#include <Eigen/Dense>
+#include "CommonTypes.hpp"
+
 #include "GetPot"
-
-using Matrix = Eigen::MatrixXd;
-using Vector = Eigen::VectorXd;
-using Ref = Eigen::Ref<Matrix>; // Specify the template argument for Eigen::Ref
-
-using Mat_Vec = std::vector<Matrix>; // Map to store conditional expectations for each time step couple (i,j)
 
 struct NumericSchemeParams{
     double T; // Total time duration for the simulation
@@ -52,7 +45,7 @@ struct ConstraintsParams{
 
 struct KernelParams{
     std::string kernel_type;
-    std::vector<double> kernel_params;
+    std::vector<double> kernel_parameters;
 };
 
 /**
@@ -68,10 +61,12 @@ class Parameters{
 private:
     std::string config_file;
 
-public:
     NumericSchemeParams numeric_params;
     OUParams ou_params;
     ConstraintsParams constraints_params;
+    KernelParams kernel_params;
+
+    public:
 
     /**
      * @brief Constructor that reads parameters from a file
@@ -123,15 +118,16 @@ public:
         constraints_params.terminal_liquidation = static_cast<bool>(input_file("terminal_liquidation", 0));
         constraints_params.stop_trad_price_lb = static_cast<bool>(input_file("stop_trad_price_lb", 0));
         constraints_params.price_lb = input_file("price_lb", 0.0);
-    }
 
-    /**
-     * @brief Set the total time T for the simulation
-     * @param T Total time duration
-     */
-    void set_total_time(double T) {
-        numeric_params.T = T;
-        ou_params.T = T;
+        // Read Kernel Parameters
+        kernel_params.kernel_type = input_file("kernel_type", "exp");
+        int num_kernel_params = 2;
+        kernel_params.kernel_parameters.clear();
+        for (int i = 0; i < num_kernel_params; ++i) {
+            std::string param_name = "par" + std::to_string(i+1);
+            double param_value = input_file(param_name.c_str(), 1.0); // Default to 1.0
+            kernel_params.kernel_parameters.push_back(param_value);
+        }
     }
 
     /**
@@ -189,6 +185,14 @@ public:
      */
     const ConstraintsParams& get_constraints_params() const {
         return constraints_params;
+    }
+
+    /**
+     * @brief Get the kernel parameters
+     * @return Reference to KernelParams
+     */
+    const KernelParams& get_kernel_params() const {
+        return kernel_params;
     }
 };
 
