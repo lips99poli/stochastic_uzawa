@@ -1,25 +1,17 @@
 #ifndef OU_SIMULATOR_HPP
 #define OU_SIMULATOR_HPP
 
-#include <Eigen/Dense>
-//create aliases for Eigen types
-using Matrix = Eigen::MatrixXd;
-using Vector = Eigen::VectorXd;
-using Ref = Eigen::Ref<Matrix>;
+#include "Parameters.hpp"
 
-using MatVec = std::vector<Matrix>;
-
-#include "OUParams.hpp"
+#include "chrono.hpp" 
 #include <random>
-#include <cmath> // for std::sin and std::sqrt
 
 class OUSimulator {
     // This class will handle the simulation of the Ornstein-Uhlenbeck process
     // and provide methods to generate the signal matrix R based on OU parameters.
 
-    private:
     public:
-        OUParams ou_params; // Parameters for the OU process
+        const OUParams& ou_params; // Parameters for the OU process
         const Vector& time_grid; // Time grid for the simulation
         const Vector time_delta; // Time delta grid
         Matrix time_integral;
@@ -29,6 +21,21 @@ class OUSimulator {
         const Matrix price;
         Matrix alpha;
         MatVec R; // Signal matrices for each path
+        
+        // Store the actual seeds used for reproducibility
+        int actual_seed1;
+        int actual_seed2;
+
+        /**
+         * @brief Generate a simple random seed using chrono timing
+         * @return Random seed value
+         */
+        static int generate_random_seed() {
+            Timings::Chrono timer;
+            timer.start();
+            timer.stop();
+            return static_cast<int>(timer.wallTime()) % 100000;
+        }
 
         Matrix construct_time_integral() {
             // Each row of time_integral contains the weights to write: integral_0^t us ds = sum_{j=0}^{N-1} us * (t_{j+1} - t_j)
@@ -39,7 +46,7 @@ class OUSimulator {
             return time_int;
         }
 
-        Matrix generateBrownianMotion(const size_t M, int seed = 42) const{
+        Matrix generateBrownianMotion(const size_t M, int seed) const{
             // Generate M paths of Brownian motion over the time grid
             Matrix BM(M, time_delta.size()); //time_delta.size()=time_grid.size() - 1
             std::default_random_engine generator(seed); // Fixed seed for reproducibility
@@ -56,7 +63,7 @@ class OUSimulator {
             return BM;
         }
         
-        Matrix generateOrnsteinUhlenbeck(const std::size_t M, int seed = 42) const {
+        Matrix generateOrnsteinUhlenbeck(const std::size_t M, int seed) const {
 
             const Matrix BM = generateBrownianMotion(M, seed); // Generate Brownian motion paths
             // Generate the Ornstein-Uhlenbeck process paths based on the Brownian motion
@@ -79,10 +86,10 @@ class OUSimulator {
             return OU * time_integral.transpose();
         }
 
-        Matrix compute_price() const{
+        Matrix compute_price(int seed) const{
             // Compute the price based on the OU process paths
             Matrix initial_price = Matrix::Constant(OU.rows(), OU.cols(), ou_params.S0);
-            Matrix BM_price = ou_params.sigma * generateBrownianMotion(OU.rows()); // Generate Brownian motion for pricing
+            Matrix BM_price = ou_params.sigma * generateBrownianMotion(OU.rows(),seed); // Generate Brownian motion for pricing
             
             return initial_price + Pt + BM_price;
         }
@@ -125,15 +132,31 @@ class OUSimulator {
         }
 
 
+
+
     public:
-        OUSimulator(const OUParams& ou_params, const Vector& time_grid, const std::size_t M):
+        /**
+         * @brief Constructor for OUSimulator
+         * @param ou_params Parameters for the Ornstein-Uhlenbeck process
+         * @param time_grid Time grid for the simulation
+         * @param M Number of Monte Carlo paths
+         * @param seed1 Seed for OU process generation (default: -1 for random)
+         * @param seed2 Seed for price process generation (default: -1 for random)
+         * 
+         * Note: When seed1 or seed2 is -1, a random seed based on current time is generated.
+         * This ensures different results for each run unless explicit seeds are provided.
+         */
+        OUSimulator(const OUParams& ou_params, const Vector& time_grid, const std::size_t M, 
+                   int seed1 = -1, int seed2 = -1):
             ou_params(ou_params)
             ,time_grid(time_grid)
             ,time_delta(time_grid.tail(time_grid.size() - 1) - time_grid.head(time_grid.size() - 1)) // Compute time step size
             ,time_integral(construct_time_integral())
-            ,OU(generateOrnsteinUhlenbeck(M,42)) // Generate Ornstein-Uhlenbeck process paths
+            ,actual_seed1(seed1 == -1 ? generate_random_seed() : seed1)
+            ,actual_seed2(seed2 == -1 ? generate_random_seed() + 1 : seed2)
+            ,OU(generateOrnsteinUhlenbeck(M, actual_seed1)) // Generate Ornstein-Uhlenbeck process paths
             ,Pt(compute_Pt())
-            ,price(compute_price())
+            ,price(compute_price(actual_seed2))
             ,alpha(Matrix::Zero(M, ou_params.N)) // Initialize alpha to zero matrix
             ,R()
         {
@@ -153,7 +176,6 @@ class OUSimulator {
             // Return the signal matrices R
             return R;
         }
-
 };
 
 #endif
