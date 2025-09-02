@@ -1,0 +1,33 @@
+Numeric Scheme Parameters
+T = 1.0
+N = 5
+D = 50
+M = 2
+epsilon = 0.01
+delta = 0.001
+beta = 0.9
+
+Ornstein-Uhlenbeck and Price Parameters
+sigma = 0.1
+S0 = 100.0
+I0 = -2.0
+theta = -20.0
+omega = 0.0
+phi = 270  # Phase shift in degrees (0, 45, 90, 180, 270, 360, etc.)
+k = 1.0
+psi = 4.0
+
+Constraints Parameters
+X0 = 10
+u_min = -100.0
+u_max = 100.0
+X_u_min = -1e6
+X_u_max = 1e6
+terminal_liquidation = 0
+stop_trad_price_lb = 0
+price_lb = 0.0
+
+Kernel Parameters
+kernel_type = exp
+par1 = 1.0
+par2 = 0.5
