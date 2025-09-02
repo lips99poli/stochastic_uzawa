@@ -16,25 +16,25 @@ class OUSimulator {
         const Vector time_delta; // Time delta grid
         Matrix time_integral;
         
+        // Store the actual seeds used for reproducibility (must be before matrices that use them)
+        int actual_seed1;
+        int actual_seed2;
+        
         const Matrix OU; // Ornstein-Uhlenbeck process paths
         const Matrix Pt;
         const Matrix price;
         Matrix alpha;
         MatVec R; // Signal matrices for each path
-        
-        // Store the actual seeds used for reproducibility
-        int actual_seed1;
-        int actual_seed2;
 
         /**
-         * @brief Generate a simple random seed using chrono timing
+         * @brief Generate a truly random seed using std::random_device
          * @return Random seed value
          */
         static int generate_random_seed() {
-            Timings::Chrono timer;
-            timer.start();
-            timer.stop();
-            return static_cast<int>(timer.wallTime()) % 100000;
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_int_distribution<int> dis(1, 1000000);
+            return dis(gen);
         }
 
         Matrix construct_time_integral() {
@@ -57,7 +57,8 @@ class OUSimulator {
             
             for (size_t i = 0; i < M; ++i) {
                 for (size_t j = 1; j < time_delta.size(); ++j) {
-                    BM(i, j) = BM(i, j - 1) + distribution(generator) * sqrt_dt(j - 1);
+                    double random_value = distribution(generator);
+                    BM(i, j) = BM(i, j - 1) + random_value * sqrt_dt(j - 1);
                 }
             }
             return BM;
@@ -149,7 +150,7 @@ class OUSimulator {
             ,time_delta(time_grid.tail(time_grid.size() - 1) - time_grid.head(time_grid.size() - 1)) // Compute time step size
             ,time_integral(construct_time_integral())
             ,actual_seed1(ou_params.seed1 == -1 ? generate_random_seed() : ou_params.seed1)
-            ,actual_seed2(ou_params.seed2 == -1 ? generate_random_seed() + 1 : ou_params.seed2)
+            ,actual_seed2(ou_params.seed2 == -1 ? generate_random_seed() : ou_params.seed2)
             ,OU(generateOrnsteinUhlenbeck(M, actual_seed1)) // Generate Ornstein-Uhlenbeck process paths
             ,Pt(compute_Pt())
             ,price(compute_price(actual_seed2))
