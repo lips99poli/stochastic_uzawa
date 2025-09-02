@@ -23,5 +23,15 @@ target_include_directories(uzawa_exec PRIVATE
     /u/sw/toolchains/gcc-glibc/11.2.0/pkgs/eigen/3.3.9/include/eigen3
 )
 
-# This line adds a compile option to suppress warnings for deprecated enum-to-enum conversions.
-add_compile_options(-Wno-deprecated-enum-enum-conversion)
+# Compiler warning suppression
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")  # Suppress all warnings
+# Alternative: suppress specific warnings instead of all warnings
+# add_compile_options(
+#     -Wno-deprecated-enum-enum-conversion
+#     -Wno-unused-variable
+#     -Wno-unused-parameter
+#     -Wno-sign-compare
+#     -Wno-deprecated-declarations
+#     -Wno-maybe-uninitialized
+#     -Wno-unused-but-set-variable
+# )
