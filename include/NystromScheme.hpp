@@ -1,15 +1,9 @@
 #ifndef NYSTROM_SCHEME_HPP
 #define NYSTROM_SCHEME_HPP
 
-#include <Eigen/Dense>
-#include <vector>
 #include <memory>
+#include "CommonTypes.hpp"
 #include "Kernel.hpp"
-
-//create aliases for Eigen types
-using Matrix = Eigen::MatrixXd;
-using Vector = Eigen::VectorXd;
-using Ref = Eigen::Ref<Matrix>; // Specify the template argument for Eigen::Ref
 
 
 class NystromScheme {
