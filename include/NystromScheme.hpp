@@ -139,36 +139,6 @@ public:
         }
         update_state_variables();
     }
-    
-    void print_operators(std::ostream& output_stream) {
-        output_stream << "=== NYSTROM SCHEME OPERATORS ===" << std::endl;
-        
-        output_stream << "time_integral matrix:" << std::endl;
-        output_stream << time_integral << std::endl << std::endl;
-        
-        output_stream << "L matrix:" << std::endl;
-        output_stream << L << std::endl << std::endl;
-        
-        output_stream << "U matrix:" << std::endl;
-        output_stream << U << std::endl << std::endl;
-        
-        output_stream << "inv_Dt matrices:" << std::endl;
-        for (size_t i = 0; i < inv_Dt.size(); ++i) {
-            output_stream << "inv_Dt[" << i << "]:" << std::endl;
-            output_stream << inv_Dt[i] << std::endl << std::endl;
-        }
-        
-        output_stream << "B matrix:" << std::endl;
-        output_stream << B << std::endl << std::endl;
-        
-        output_stream << "I_B_inv matrix:" << std::endl;
-        output_stream << I_B_inv << std::endl << std::endl;
-        
-        output_stream << "a_operator matrix:" << std::endl;
-        output_stream << a_operator << std::endl << std::endl;
-        
-        output_stream << "========================" << std::endl << std::endl;
-    }
 };
 
 
