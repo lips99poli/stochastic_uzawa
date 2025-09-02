@@ -1,7 +1,6 @@
 #ifndef STOCHASTIC_UZAWA_SOLVER_HPP
 #define STOCHASTIC_UZAWA_SOLVER_HPP
 
-#include <vector>
 #include <memory>
 #include <iostream>
 #include <fstream>
@@ -17,7 +16,6 @@
 #include "OUSimulator.hpp"
 #include "LSMCR.hpp"
 #include "NystromScheme.hpp"
-
 
 class StochasticUzawaSolver {
     public:
