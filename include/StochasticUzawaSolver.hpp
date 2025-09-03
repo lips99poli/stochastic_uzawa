@@ -18,7 +18,7 @@
 #include "NystromScheme.hpp"
 
 class StochasticUzawaSolver {
-    public:
+private:
 
     // Parameters and related objects
     Parameters params;
@@ -93,7 +93,7 @@ class StochasticUzawaSolver {
     }
 
 
-    public:
+public:
     // Note that variables are of time length N, whereas multipliers are of time length N+1
     StochasticUzawaSolver(const std::string& filename = "data/Parameters.pot") :
         params(filename),

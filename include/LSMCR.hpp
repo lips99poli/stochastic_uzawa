@@ -24,9 +24,7 @@ Matrix LaguerrePolynomial(const Vector& x, const int degree);
 // la regressione ha senso fino all'ultimo valore delle variabili di stato e con le info fino al precedente -> output indici 1 a N-1 e input da 0 a N-2 (entrambi lunghi N-1)
 
 class LSMCR{
-    private:
-
-    public:
+private:
     const std::size_t d1; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the first regression
     const std::size_t d2; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the second regression
     const std::size_t comb_upto_d1, comb_upto_d2;
@@ -221,7 +219,7 @@ class LSMCR{
         }
     }
 
-    public:
+public:
     LSMCR(const std::size_t d1, const std::size_t d2, 
         const std::size_t N, const double time_delta, const std::size_t M, 
         const Matrix& alpha, const Matrix& Z_u, const std::unique_ptr<Matrix>& X_u, const std::vector<std::unique_ptr<Matrix>>& lambda)

@@ -7,8 +7,7 @@
 
 
 class NystromScheme {
-//private:
-public:
+private:
     // Parameters
     const std::size_t N; // Number of time steps
     const Matrix I_N;
@@ -36,26 +35,7 @@ public:
 
     Matrix a_operator; // Matrix (N,N) where each row i is the operatore to apply at time t_i
 
-
-public: // constructor
-    NystromScheme(const std::size_t M, const std::size_t N, const Vector& time_grid, 
-        const double X0, 
-        const Kernel& k, 
-        const std::unique_ptr<Matrix>& u, Matrix& Z_u, const std::unique_ptr<Matrix>& X_u, 
-        const std::vector<Matrix>& R, 
-        const std::vector<Matrix>& Gamma)
-        : M(M), N(N),I_N(Matrix::Identity(N, N)), time_grid(time_grid), X0(Matrix::Constant(M, N, X0)), kernel(k), u(u), Z_u(Z_u), X_u(X_u), R(R), Gamma(Gamma)
-    {
-        // Construct Matrixes for operators that do not depend on the control variable u
-        construct_time_integral();
-        construct_L_and_U(); // Construct the L and U matrices based on the kernel and time grid
-        construct_inv_Dt(); // Construct the inverse of (I +K_t +K*_t) for each time step
-        construct_B_and_a_operator();
-        // Reserve space for the R_sum_Gamma vector of dimension M
-        R_sum_Gamma.reserve(M);
-    }
-
-//private: // Construct operators
+    // Construct the time integral operator
     void construct_time_integral() {
         // Each row of time_integral contains the weights to write: integral_0^t us ds = sum_{j=0}^{N-1} us * (t_{j+1} - t_j)
         Vector time_delta = time_grid.tail(N) - time_grid.head(N);
@@ -126,7 +106,24 @@ public: // constructor
         X_u->noalias() = X0 + (*u) * time_integral.transpose();
     }
 
-public:
+public: // constructor
+    NystromScheme(const std::size_t M, const std::size_t N, const Vector& time_grid, 
+        const double X0, 
+        const Kernel& k, 
+        const std::unique_ptr<Matrix>& u, Matrix& Z_u, const std::unique_ptr<Matrix>& X_u, 
+        const std::vector<Matrix>& R, 
+        const std::vector<Matrix>& Gamma)
+        : M(M), N(N),I_N(Matrix::Identity(N, N)), time_grid(time_grid), X0(Matrix::Constant(M, N, X0)), kernel(k), u(u), Z_u(Z_u), X_u(X_u), R(R), Gamma(Gamma)
+    {
+        // Construct Matrixes for operators that do not depend on the control variable u
+        construct_time_integral();
+        construct_L_and_U(); // Construct the L and U matrices based on the kernel and time grid
+        construct_inv_Dt(); // Construct the inverse of (I +K_t +K*_t) for each time step
+        construct_B_and_a_operator();
+        // Reserve space for the R_sum_Gamma vector of dimension M
+        R_sum_Gamma.reserve(M);
+    }
+
     // Update control variable u and state variables Z_u and X_u
     void nystrom_update(){
         // Update the R_sum_Gamma vector with R+Gamma at each m<M

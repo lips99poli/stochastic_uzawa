@@ -70,7 +70,7 @@ private:
     ConstraintsParams constraints_params;
     KernelParams kernel_params;
 
-    public:
+public:
 
     /**
      * @brief Constructor that reads parameters from a file
