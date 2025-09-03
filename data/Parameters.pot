@@ -16,8 +16,8 @@ omega = 0.0
 phi = 270  # Phase shift in degrees (0, 45, 90, 180, 270, 360, etc.)
 k = 1.0
 psi = 4.0
-seed1 = -1 # For BrowninaMotion simulation of OU, -1 for random seed
-seed2 = -1 # For BrowninaMotion simulation of price, -1 for random seed
+seed1 = 0 # For BrowninaMotion simulation of OU, 0 for random seed
+seed2 = 0 # For BrowninaMotion simulation of price, 0 for random seed (if equal to seed1 get the same BM of OU!)
 
 # Constraints Parameters
 X0 = 10
