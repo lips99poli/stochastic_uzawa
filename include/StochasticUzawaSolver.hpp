@@ -179,9 +179,7 @@ class StochasticUzawaSolver {
     // 4. Update Slackness Variables to check if convergence is reached
     void solve(){
         // Initialize LSMCR structure
-        const std::size_t d1 = 1; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the first regression
-        const std::size_t d2 = 1; // Upper bound for the sum of the degrees of the Laguerre polynomials used in the second regression
-        LSMCR lsmcr(d1, d2, N, time_delta, M, alpha, Z_u, X_u, lambda);
+        LSMCR lsmcr(numeric_params.d1, numeric_params.d2, N, time_delta, M, alpha, Z_u, X_u, lambda);
 
         // Initialize Nystrom Scheme structure
         NystromScheme nystrom_scheme(M, N, time_grid, constraints_params.X0, *kernel, u, Z_u, X_u, R, Gamma);

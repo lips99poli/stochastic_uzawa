@@ -15,6 +15,8 @@ struct NumericSchemeParams{
     double epsilon; // Tolerance for convergence
     double delta; // Adaptive learning
     double beta; // Adaptive learning rate
+    std::size_t d1; // Degree for LSMCR first regression
+    std::size_t d2; // Degree for LSMCR second regression
 };
 
 struct OUParams {
@@ -92,6 +94,8 @@ private:
         numeric_params.epsilon = input_file("epsilon", 1e-3);
         numeric_params.delta = input_file("delta", 1);
         numeric_params.beta = input_file("beta", 0.8);
+        numeric_params.d1 = input_file("d1", 1); // Degree for LSMCR first regression
+        numeric_params.d2 = input_file("d2", 2); // Degree for LSMCR second regression
         
         // Read Ornstein-Uhlenbeck and Price Parameters
         ou_params.sigma = input_file("sigma", 0.0);
