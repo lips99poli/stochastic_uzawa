@@ -38,8 +38,12 @@ public:
 
 
 public: // constructor
-    NystromScheme(const std::size_t M, const std::size_t N, const Vector& time_grid, const double X0, const Kernel& k, const std::unique_ptr<Matrix>& u, Matrix& Z_u,
-                  const std::unique_ptr<Matrix>& X_u, const std::vector<Matrix>& R, const std::vector<Matrix>& Gamma)
+    NystromScheme(const std::size_t M, const std::size_t N, const Vector& time_grid, 
+        const double X0, 
+        const Kernel& k, 
+        const std::unique_ptr<Matrix>& u, Matrix& Z_u, const std::unique_ptr<Matrix>& X_u, 
+        const std::vector<Matrix>& R, 
+        const std::vector<Matrix>& Gamma)
         : M(M), N(N),I_N(Matrix::Identity(N, N)), time_grid(time_grid), X0(Matrix::Constant(M, N, X0)), kernel(k), u(u), Z_u(Z_u), X_u(X_u), R(R), Gamma(Gamma)
     {
         // Construct Matrixes for operators that do not depend on the control variable u
@@ -66,8 +70,10 @@ public: // constructor
     void construct_L_and_U() {
         L = Matrix::Zero(N, N);
         U = Matrix::Zero(N, N);
-        // Construct the L and U matrices based on the kernel and time grid
-        for (std::size_t i = 0; i < N; ++i) {
+        
+        // Parallelize the construction of L and U matrices
+        #pragma omp parallel for schedule(static)
+        for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i) {
             for (std::size_t j = 0; j < i; ++j) { // int_tj^tj+1 of K(t_i, s)
                 L(i, j) = kernel.s_integral(time_grid(i), time_grid(j), time_grid(j + 1));
             }
@@ -78,9 +84,11 @@ public: // constructor
     }
     // Construct the inverse of (I +K_t +K*_t) for each time step
     void construct_inv_Dt() {
-        inv_Dt.reserve(N);
-        inv_Dt.emplace_back((I_N + L + U).inverse());
-        for(std::size_t i = 1; i < N; ++i) {
+        inv_Dt.resize(N);
+        inv_Dt[0] = (I_N + L + U).inverse();
+        
+        #pragma omp parallel for schedule(static)
+        for(par_for_type i = 1; i < static_cast<par_for_type>(N); ++i) {
             // Matrix Kt_i is matrix L where the first i columns and i rows are zero
             Matrix Kt_i = Matrix::Zero(N, N);
             Kt_i.bottomRightCorner(N-i, N-i) = L.bottomRightCorner(N-i, N-i);
@@ -90,14 +98,17 @@ public: // constructor
             K_star_t_i.bottomRightCorner(N-i, N-i) = U.bottomRightCorner(N-i, N-i);
 
             // Compute the inverse of (I + Kt_i + K*_t_i)
-            inv_Dt.emplace_back((I_N + Kt_i + K_star_t_i).inverse());
+            inv_Dt[i] = (I_N + Kt_i + K_star_t_i).inverse();
         }
     }
     // Construct operators B and a_operator
     void construct_B_and_a_operator() {
         B = Matrix::Zero(N, N);
         a_operator = Matrix::Zero(N, N);
-        for (std::size_t i = 0; i < N; ++i) {
+        
+        // Parallelize the construction of a_operator and B
+        #pragma omp parallel for schedule(static)
+        for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i) {
             a_operator.row(i) = U.row(i) * inv_Dt[i];
             for(std::size_t j = 0; j < i; ++j) {
                 B(i,j) = a_operator.row(i) * L.col(j);
@@ -120,11 +131,18 @@ public:
     void nystrom_update(){
         // Update the R_sum_Gamma vector with R+Gamma at each m<M
         R_sum_Gamma.clear();
-        for (std::size_t m = 0; m < M; ++m) {
-            R_sum_Gamma.emplace_back(R[m] + Gamma[m]);
+        R_sum_Gamma.resize(M);
+        
+        // Parallelize the R_sum_Gamma computation
+        #pragma omp parallel for schedule(static)
+        for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m) {
+            R_sum_Gamma[m] = R[m] + Gamma[m];
         }
+        
         // Update the control variable u based on the Nystrom scheme
-        for (std::size_t m = 0; m < M; ++m) {
+        // Parallelize over Monte Carlo paths
+        #pragma omp parallel for schedule(static)
+        for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m) {
             Vector a(N);
             for (std::size_t i = 0; i < N; ++i) {
                 a[i] = R_sum_Gamma[m](i,i) - a_operator.row(i).dot(R_sum_Gamma[m].row(i));
