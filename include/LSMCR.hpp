@@ -73,19 +73,27 @@ class LSMCR{
     // This function will precompute the target vector for the first regression
     void precompute_target_i(){
         target_i = Matrix::Zero(M, N); // Initialize the target vector for the first regression
+        
         // Compute cumulative sum from right to left for efficiency
-        Vector cumsum = Vector::Zero(M);
-        for (int j = static_cast<int>(N)-1; j >= 0; --j) {
-            cumsum += diff_lambda_3_4.col(j); // Add current column to cumulative sum
-            target_i.col(j) = cumsum * time_delta; // Store for time step j
+        // Parallelize over paths (rows)
+        #pragma omp parallel for schedule(static)
+        for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m) {
+            double cumsum = 0.0;
+            for (int j = static_cast<int>(N)-1; j >= 0; --j) {
+                cumsum += diff_lambda_3_4(m, j); // Add current element to cumulative sum
+                target_i(m, j) = cumsum * time_delta; // Store for time step j
+            }
         }
     }
 
     // This function will precompute the target vector for the second regression
     void precompute_target_ij(){
         target_ij = Matrix::Zero(M, N-1);
-        for (std::size_t j=0; j<N-1; ++j){
-            // Recall that targets are already shifted by 1 in time
+        
+        // Parallelize over time steps
+        #pragma omp parallel for schedule(static)
+        for (par_for_type j = 0; j < static_cast<par_for_type>(N-1); ++j){
+            // Recall that target_i are already shifted by 1 in time
             target_ij.col(j) = target_i.col(j+1) + diff_lambda_1_2.col(j+1);
         }
     }
@@ -93,16 +101,21 @@ class LSMCR{
     // This function will precompute the regressors for the first regression
     void precompute_regressors_i(){
         regressors_i.clear();
-        for(std::size_t i=0; i<N; ++i){
+        regressors_i.resize(N);
+        
+        // Parallelize over time steps
+        #pragma omp parallel for schedule(static)
+        for(par_for_type i = 0; i < static_cast<par_for_type>(N); ++i){
             // The matrix PHI_i will be of dimension Mx(d1+3 choose 3), where M is the number of sample paths.
             // Each column of PHI_i will contain all possible combinations of multiplication of Laguerre polynomials of the three variables such that the sum of the degrees is less than or equal to d1.
-            regressors_i.emplace_back(M, comb_upto_d1); // Construct matrix directly in vector
-            Matrix& PHI_i = regressors_i.back(); // Get reference to the matrix
-            PHI_i.setZero(); // Initialize to zero
+            regressors_i[i] = Matrix::Zero(M, comb_upto_d1); // Initialize matrix
+            Matrix& PHI_i = regressors_i[i]; // Get reference to the matrix
+            
             std::size_t col_idx = 0; // Column index for PHI_i
             for (std::size_t x = 0; x <= d1; ++x) {
                 for (std::size_t y = 0; y <= d1-x; ++y) {
                     for (std::size_t z = 0; z <= d1-x-y; ++z) {
+                        // Vectorized multiplication for all paths at once
                         PHI_i.col(col_idx) = laguerre_alpha[i].col(x).array() *
                                             laguerre_Z_u[i].col(y).array() *
                                             laguerre_X_u[i].col(z).array();
@@ -116,16 +129,21 @@ class LSMCR{
     // This function will precompute the regressors for the second regression
     void precompute_regressors_ij(){
         regressors_ij.clear();
-        for(std::size_t i=0; i<N-1; ++i){
+        regressors_ij.resize(N-1);
+        
+        // Parallelize over time steps
+        #pragma omp parallel for schedule(static)
+        for(par_for_type i = 0; i < static_cast<par_for_type>(N-1); ++i){
             // The matrix PHI_i will be of dimension Mx(d2+3 choose 3), where M is the number of sample paths.
             // Each column of PHI_i will contain all possible combinations of multiplication of Laguerre polynomials of the three variables such that the sum of the degrees is less than or equal to d2.
-            regressors_ij.emplace_back(M, comb_upto_d2); // Construct matrix directly in vector
-            Matrix& PHI_i = regressors_ij.back(); // Get reference to the matrix
-            PHI_i.setZero(); // Initialize to zero
+            regressors_ij[i] = Matrix::Zero(M, comb_upto_d2); // Initialize matrix
+            Matrix& PHI_i = regressors_ij[i]; // Get reference to the matrix
+            
             std::size_t col_idx = 0; // Column index for PHI_i
             for (std::size_t x = 0; x <= d2; ++x) {
                 for (std::size_t y = 0; y <= d2-x; ++y) {
                     for (std::size_t z = 0; z <= d2-x-y; ++z) {
+                        // Vectorized multiplication for all paths at once
                         PHI_i.col(col_idx) = laguerre_alpha[i].col(x).array() *
                                             laguerre_Z_u[i].col(y).array() *
                                             laguerre_X_u[i].col(z).array();
@@ -136,14 +154,14 @@ class LSMCR{
         }
     }
 
-
     // Function to compute the coefficients of the first LSMCR regression
     void regression_i(){
         // The Linear Regression will solve for each time step i the following equation: PHI_i * coeffs_i = Y_i giving as output coeffs_i of size (d1+3  3) x 1
         // The final output will be the matrix coeffs_i of size ((d1+3  3), N)
         
-        // Cicle over the time steps i from 0 to N-1
-        for (std::size_t i = 0; i < N; ++i) {
+        // Parallelize over time steps - each QR decomposition is independent
+        #pragma omp parallel for schedule(static)
+        for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i) {
             // Construct matrix PHI_i
             const Matrix& PHI_i = regressors_i[i];
 
@@ -157,11 +175,19 @@ class LSMCR{
         // The Linear Regression will solve for each time step couple (i,j) s.t. 0<=i<j<N the following equation: PHI_i * coeffs_ij = Y_j giving as output coeffs_ij of size (d2+3  3) x 1
         // The final output will be the vector of Matrix coeffs_ij of size (N-1, (d2+3  3), N-1-i)
         coeff_ij.clear(); // Clear the previous coefficients
+        coeff_ij.resize(N-1);
+        
+        // Initialize matrices for each i
         for (std::size_t i = 0; i < N-1; ++i) {
-            coeff_ij.emplace_back(comb_upto_d2, N-1-i); // Create a new Matrix for each i
-            // Loop over j from i+1 to N-1 to gill the columns of coeff_ij[i]
-            for (std::size_t j=i; j<N-1; ++j) {
-                coeff_ij[i].col(j-i) = regressors_ij[i].colPivHouseholderQr().solve(target_ij.col(j));
+            coeff_ij[i] = Matrix::Zero(comb_upto_d2, N-1-i); // Create a new Matrix for each i
+        }
+        
+        // Parallelize over all (i,j) pairs
+        #pragma omp parallel for collapse(2)
+        for (par_for_type i = 0; i < static_cast<par_for_type>(N-1); ++i) {
+            for (par_for_type j_idx = 0; j_idx < static_cast<par_for_type>(N-1-i); ++j_idx) {
+                std::size_t j = i + j_idx;
+                coeff_ij[i].col(j_idx) = regressors_ij[i].colPivHouseholderQr().solve(target_ij.col(j));
             }
         }
     }
@@ -169,29 +195,39 @@ class LSMCR{
     // Function to estimate the conditional expectation E_i[ sum_l_i+1_N {lamda3_l - lambda4_l} ] given the coefficients of the first regression
     void estimate_conditional_expectation_i() {
         cond_exp_i = Matrix::Zero(M, N);
-        for (std::size_t i=0; i<N; ++i){
+        
+        // Parallelize over time steps
+        #pragma omp parallel for schedule(static)
+        for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i){
             cond_exp_i.col(i) = regressors_i[i] * coeff_i.col(i);
         }
     }
     // Function to estimate the conditional expectation E_i[ lamda1_j - lamda2_j + sum_l_j+1_N {lambda3_l - lambda2_4} ] given the coefficients of the second regression
     void estimate_conditional_expectation_ij() {
-        cond_exp_ij.clear(); // Reserve space for N-1 matrices
+        cond_exp_ij.clear();
+        cond_exp_ij.resize(N-1);
+        
+        // Initialize matrices
         for (std::size_t i=0; i<N-1; ++i){
-            cond_exp_ij.emplace_back(M, N-1-i); // Create a new Matrix for each i
-            for (std::size_t j=i; j<N-1; ++j){
-                cond_exp_ij[i].col(j-i) = regressors_ij[i] * coeff_ij[i].col(j-i);
+            cond_exp_ij[i] = Matrix::Zero(M, N-1-i); // Create a new Matrix for each i
+        }
+        
+        // Parallelize over all (i,j) pairs
+        #pragma omp parallel for collapse(2)
+        for (par_for_type i = 0; i < static_cast<par_for_type>(N-1); ++i){
+            for (par_for_type j_idx = 0; j_idx < static_cast<par_for_type>(N-1-i); ++j_idx){
+                cond_exp_ij[i].col(j_idx) = regressors_ij[i] * coeff_ij[i].col(j_idx);
             }
         }
     }
 
     public:
-    LSMCR(const std::size_t d1, const std::size_t d2, const std::size_t N, const double time_delta, const std::size_t M, const Matrix& alpha, const Matrix& Z_u, const std::unique_ptr<Matrix>& X_u, const std::vector<std::unique_ptr<Matrix>>& lambda)
+    LSMCR(const std::size_t d1, const std::size_t d2, 
+        const std::size_t N, const double time_delta, const std::size_t M, 
+        const Matrix& alpha, const Matrix& Z_u, const std::unique_ptr<Matrix>& X_u, const std::vector<std::unique_ptr<Matrix>>& lambda)
         : d1(d1), d2(d2), comb_upto_d1((d1+3)*(d1+2)*(d1+1)/6), comb_upto_d2((d2+3)*(d2+2)*(d2+1)/6), N(N), time_delta(time_delta), M(M), 
           alpha(alpha), Z_u(Z_u), X_u(X_u), lambda(lambda)
         {
-        if (alpha.size() == 0|| Z_u.size() == 0 || !X_u) {
-            throw std::invalid_argument("Invalid input for state variables.");
-        }
         laguerre_alpha.reserve(N);
         laguerre_Z_u.reserve(N);
         laguerre_X_u.reserve(N);
@@ -208,17 +244,32 @@ class LSMCR{
         laguerre_alpha.clear();
         laguerre_Z_u.clear();
         laguerre_X_u.clear();
-        // Compute the Laguerre polynomials for each variable
+        laguerre_alpha.resize(N);
+        laguerre_Z_u.resize(N);
+        laguerre_X_u.resize(N);
+        
+        // Compute the Laguerre polynomials for each variable in parallel
         int degree = std::max(d1, d2);
-        for (std::size_t i = 0; i < N; ++i) {
-            laguerre_alpha.push_back(LaguerrePolynomial(alpha.col(i), degree));
-            laguerre_Z_u.push_back(LaguerrePolynomial(Z_u.col(i), degree));
-            laguerre_X_u.push_back(LaguerrePolynomial((*X_u).col(i), degree));
+        #pragma omp parallel for schedule(static)
+        for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i) {
+            laguerre_alpha[i] = LaguerrePolynomial(alpha.col(i), degree);
+            laguerre_Z_u[i] = LaguerrePolynomial(Z_u.col(i), degree);
+            laguerre_X_u[i] = LaguerrePolynomial((*X_u).col(i), degree);
         }
         
         // LAMBDA1 - LAMBDA2 and LAMBDA3 - LAMBDA4
-        diff_lambda_1_2 = (*lambda[0]) - (*lambda[1]);
-        diff_lambda_3_4 = (*lambda[2]) - (*lambda[3]);
+        // Parallelize matrix operations
+        #pragma omp parallel sections
+        {
+            #pragma omp section
+            {
+                diff_lambda_1_2 = (*lambda[0]) - (*lambda[1]);
+            }
+            #pragma omp section
+            {
+                diff_lambda_3_4 = (*lambda[2]) - (*lambda[3]);
+            }
+        }
 
         // TARGETS
         // Precompute the targets
@@ -245,14 +296,17 @@ class LSMCR{
 
     MatVec estimate_gamma(){
         MatVec Gamma(M, Matrix::Zero(N, N));
-        for (std::size_t m=0; m<M; ++m){
+        
+        // Parallelize over simulation paths
+        #pragma omp parallel for schedule(static)
+        for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m){
             // Fill diagonal
             Gamma[m].diagonal() = cond_exp_i.row(m) + diff_lambda_1_2.row(m);
             // Fill upper triangle
-            for (std::size_t i=0; i<N-1; ++i){
+            for (std::size_t i = 0; i < N-1; ++i){
                 // Recall cond_exp_ij: fix i as the time of the expectation than we have a matrix of size (M, N-1-i) with the conditional expectation for each j>i up to N-1
                 // The rows in the upper triangle (diagonal excluded) are filled for each m with the rows cond_exp_ij[i](m,:)
-                for (std::size_t j=i+1; j<N; ++j){
+                for (std::size_t j = i+1; j < N; ++j){
                     Gamma[m](i,j) = cond_exp_ij[i](m,j-1-i);
                 }
             }
@@ -262,14 +316,9 @@ class LSMCR{
 
 };
 
-
 // Function to compute Laguerre polinomial on a given vector of a given degree.
 // For the implementation it used a recursive implementation: L_n(x) = (2n-1-x)L_{n-1}(x) - (n-1)L_{n-2}(x) / n
 Matrix LaguerrePolynomial(const Vector& x, const int degree){
-    if (degree < 0) {
-        throw std::invalid_argument("Degree must be non-negative");
-    }
-    
     Matrix result(x.size(), degree+1);
     result.col(0) = Vector::Ones(x.size()); // L_0(x) = 1
     if (degree >= 1) {
