@@ -4,19 +4,10 @@
 #include <stdexcept>
 #include <memory>
 #include <vector>
-#include <map>
 #include <numeric>
 #include <cstddef>
-#include <Eigen/Dense>
 
-
-
-//create aliases for Eigen types
-using Matrix = Eigen::MatrixXd;
-using Vector = Eigen::VectorXd;
-using Ref = Eigen::Ref<Matrix>;
-
-using Mat_Vec = std::vector<Matrix>; // Map to store conditional expectations for each time step couple (i,j)
+#include "CommonTypes.hpp"
 
 // Forward declaration of LaguerrePolynomial function
 Matrix LaguerrePolynomial(const Vector& x, const int degree);
@@ -53,25 +44,25 @@ class LSMCR{
     Matrix diff_lambda_3_4; // Difference lambda3 - lambda4, of size (M, N)
 
     // Laguerre polynomials for the three variables of state, vector length N containinig matrixes of size (M, max(d1,d2)+1), (M, max(d1,d2)+1), (M, max(d1,d2)+1)
-    Mat_Vec laguerre_alpha; // Laguerre polynomials for alpha, of size (M, max(d1,d2)+1)
-    Mat_Vec laguerre_Z_u; // Laguerre polynomials for Z_u, of size (M, max(d1,d2)+1)
-    Mat_Vec laguerre_X_u; // Laguerre polynomials for X_u, of size (M, max(d1,d2)+1)
+    MatVec laguerre_alpha; // Laguerre polynomials for alpha, of size (M, max(d1,d2)+1)
+    MatVec laguerre_Z_u; // Laguerre polynomials for Z_u, of size (M, max(d1,d2)+1)
+    MatVec laguerre_X_u; // Laguerre polynomials for X_u, of size (M, max(d1,d2)+1)
 
     // Targets for the two regressions
     Matrix target_i; // Target matrix for the first regression, of size (N,M): for every timestamp i I have a target vector of size M corresponding to time i+1
     Matrix target_ij; // Target matrix for the second regression, of size (N,M): for every timestamp couple j>i (i indicates the time of regressors) I have a target vector of size M
 
     // Regressors for the 2 regressions
-    Mat_Vec regressors_i; // Vector of length N where each element is the matrix PHI_i of size((d+3  3), M) 
-    Mat_Vec regressors_ij; // Vector of length N where each element is the matrix PHI_i of size((d+3  3), M)
+    MatVec regressors_i; // Vector of length N where each element is the matrix PHI_i of size((d+3  3), M) 
+    MatVec regressors_ij; // Vector of length N where each element is the matrix PHI_i of size((d+3  3), M)
 
     // Coefficients for the two regressions
     Matrix coeff_i; // Coefficients matrix for the first regression, of size ((d1+3  3), N-1)
-    Mat_Vec coeff_ij; // Coefficients map for the second regression, of size (N-1,(d2+3  3),N-1-i): for each i going from 0 to N-2 i do regression for target at all j in [i+1,N-1] and i get (d2+3  3) coefficientes 
+    MatVec coeff_ij; // Coefficients map for the second regression, of size (N-1,(d2+3  3),N-1-i): for each i going from 0 to N-2 i do regression for target at all j in [i+1,N-1] and i get (d2+3  3) coefficientes 
 
     // Estimates for the two conditional expectations
     Matrix cond_exp_i;
-    Mat_Vec cond_exp_ij;
+    MatVec cond_exp_ij;
 
 
     // Dubbio: non ho capito da quando inizia la regressione: i=0 o i=1?
@@ -250,10 +241,10 @@ class LSMCR{
 
     // Getter functions to access coefficients for testing/debugging
     const Matrix& get_coeff_i() const { return coeff_i; }
-    const Mat_Vec& get_coeff_ij() const { return coeff_ij; }
+    const MatVec& get_coeff_ij() const { return coeff_ij; }
 
-    Mat_Vec estimate_gamma(){
-        Mat_Vec Gamma(M, Matrix::Zero(N, N));
+    MatVec estimate_gamma(){
+        MatVec Gamma(M, Matrix::Zero(N, N));
         for (std::size_t m=0; m<M; ++m){
             // Fill diagonal
             Gamma[m].diagonal() = cond_exp_i.row(m) + diff_lambda_1_2.row(m);
