@@ -1,0 +1,55 @@
+#ifndef INTERFACE_HPP
+#define INTERFACE_HPP
+
+#include "Parameters.hpp"
+#include "StochasticUzawaSolver.hpp"
+#include <Eigen/Dense>
+#include <vector>
+#include <string>
+#include <memory>
+#include <optional>
+
+struct ParamError {
+    std::string path;
+    std::string message;
+    
+    ParamError(const std::string& p, const std::string& m) : path(p), message(m) {}
+};
+
+class Interface {
+private:
+    std::optional<Parameters> frozen_;
+    std::unique_ptr<StochasticUzawaSolver> solver_;
+    std::optional<Eigen::MatrixXd> price_cache_;
+    
+    // Internal validation helpers
+    std::vector<ParamError> validate_all(const Parameters& p);
+    std::vector<ParamError> validate_price_only(const Parameters& p);
+    void merge_price_subset(const Parameters& src, Parameters& dst);
+
+public:
+    Interface() = default;
+    ~Interface() = default;
+    
+    // Parameter management
+    std::vector<ParamError> read_par(const std::string& file_path);
+    std::vector<ParamError> update_price_par(const std::string& file_path);
+    
+    // Simulation and solving
+    Eigen::MatrixXd simulate_price();
+    void start_solver();
+    void solve();
+    
+    // Getters
+    Eigen::MatrixXd get_price();
+    const Eigen::MatrixXd& get_u();
+    const Eigen::MatrixXd& get_X();
+    const Eigen::MatrixXd& get_lambda1();
+    const Eigen::MatrixXd& get_lambda2();
+    const Eigen::MatrixXd& get_lambda3();
+    const Eigen::MatrixXd& get_lambda4();
+    const Eigen::VectorXd& get_time_grid();
+    std::size_t iterations();
+};
+
+#endif // INTERFACE_HPP
