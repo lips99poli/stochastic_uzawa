@@ -94,6 +94,20 @@ void Parameters::print_parameters() const {
     std::cout << "price_lb: " << constraints_params.price_lb << std::endl;
 }
 
+void Parameters::update_price_parameters(const Parameters& other_params) {
+    // Update price-related parameters from the other Parameters object
+    const auto& other_numeric = other_params.get_numeric_params();
+    const auto& other_ou = other_params.get_ou_params();
+    
+    // Update numeric parameters that affect price simulation
+    numeric_params.T = other_numeric.T;
+    numeric_params.N = other_numeric.N;
+    numeric_params.M = other_numeric.M;
+    
+    // Update all OU/price parameters using assignment operator
+    ou_params = other_ou;
+}
+
 const NumericSchemeParams& Parameters::get_numeric_params() const {
     return numeric_params;
 }

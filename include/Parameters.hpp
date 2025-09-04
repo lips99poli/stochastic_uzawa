@@ -83,6 +83,12 @@ public:
     void print_parameters() const;
 
     /**
+     * @brief Update only price-related parameters from another Parameters object
+     * @param other_params Source parameters to copy price-related values from
+     */
+    void update_price_parameters(const Parameters& other_params);
+
+    /**
      * @brief Get the numeric scheme parameters
      * @return Reference to NumericSchemeParams
      */
