@@ -53,6 +53,7 @@ private:
     std::vector<double> slackness; // Slackness variables for convergence check
 
     // Private helper methods
+    void setup_variables();
     void gradient_update(std::size_t n);
     double compute_slackness();
 
@@ -62,6 +63,9 @@ public:
 
     // Simulate signal
     Matrix simulate_signal();
+
+    // Update parameters (for price-related updates)
+    void update_parameters(const Parameters& new_params);
 
     // Implement the Uzawa algorithm to solve the control problem
     void solve();

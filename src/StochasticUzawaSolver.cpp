@@ -1,6 +1,5 @@
 #include "StochasticUzawaSolver.hpp"
 #include <limits>
-//#include <algorithm>
 #include <cmath>
 
 StochasticUzawaSolver::StochasticUzawaSolver(const Parameters& p) :
@@ -27,14 +26,13 @@ StochasticUzawaSolver::StochasticUzawaSolver(const Parameters& p) :
     // Number of Monte Carlo paths
     M(numeric_params.M),
 
-    // Control Variables
-    u( std::make_unique<Matrix>(Matrix::Zero(M, N)) ),
-    X_u( std::make_unique<Matrix>(Matrix::Constant(M, N, constraints_params.X0)) ),
-    Z_u( Matrix::Zero(M, N) ),
+    // Control Variables - will be initialized by setup_variables()
+    u( std::make_unique<Matrix>() ),
+    X_u( std::make_unique<Matrix>() ),
+    Z_u( ),
 
-    // Lagrange Multipliers
-    lambda(4), // Initialize lambda vector with 4 elements
-    slackness(std::vector<double>(4, std::numeric_limits<double>::infinity())) // Initialize slackness variables to infinity
+    // Lagrange Multipliers - will be initialized by setup_variables()
+    lambda(4) // Initialize lambda vector with 4 elements
 
 {
     // Create the appropriate kernel based on the type string
@@ -47,13 +45,41 @@ StochasticUzawaSolver::StochasticUzawaSolver(const Parameters& p) :
                                   ". Supported types are: 'exp' and 'frac'");
     }
     
-    // Initialize lambda vector elements
-    for(std::size_t i = 0; i < 4; ++i) {
-        lambda[i] = std::make_unique<Matrix>(Matrix::Zero(M, N));
+    // Initialize all variables using the centralized method
+    setup_variables();
+}
+
+void StochasticUzawaSolver::setup_variables() {
+    // Initialize/reset control variables
+    if (!u) {
+        u = std::make_unique<Matrix>(Matrix::Zero(M, N));
+    } else {
+        *u = Matrix::Zero(M, N);
     }
     
-    // Initialize gamma to vector of size M of matrices (N,N)
-    Gamma.resize(M, Matrix::Zero(N, N));
+    if (!X_u) {
+        X_u = std::make_unique<Matrix>(Matrix::Constant(M, N, constraints_params.X0));
+    } else {
+        *X_u = Matrix::Constant(M, N, constraints_params.X0);
+    }
+    
+    Z_u = Matrix::Zero(M, N);
+    
+    // Initialize/reset Lagrange multipliers
+    for(std::size_t i = 0; i < 4; ++i) {
+        if (!lambda[i]) {
+            lambda[i] = std::make_unique<Matrix>(Matrix::Zero(M, N));
+        } else {
+            *lambda[i] = Matrix::Zero(M, N);
+        }
+    }
+    
+    // Reset iteration counter and slackness
+    n = 0;
+    slackness = std::vector<double>(4, std::numeric_limits<double>::infinity());
+    
+    // Initialize/reset Gamma
+    Gamma = MatVec(M, Matrix::Zero(N, N));
 }
 
 void StochasticUzawaSolver::gradient_update(std::size_t n) {
@@ -104,6 +130,9 @@ Matrix StochasticUzawaSolver::simulate_signal() {
 }
 
 void StochasticUzawaSolver::solve() {
+    // Setup/reset all variables to initial state
+    setup_variables();
+    
     // Initialize LSMCR structure
     LSMCR lsmcr(numeric_params.d1, numeric_params.d2, N, time_delta, M, alpha, Z_u, X_u, lambda);
 
@@ -132,6 +161,11 @@ void StochasticUzawaSolver::solve() {
         // Increment the iteration counter
         ++n;
     }
+}
+
+void StochasticUzawaSolver::update_parameters(const Parameters& new_params) {
+    // Update the parameters object (only price-related parameters and T, N, M)
+    params.update_price_parameters(new_params);
 }
 
 // Getter methods
