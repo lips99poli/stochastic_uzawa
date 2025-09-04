@@ -316,7 +316,7 @@ public:
 
 // Function to compute Laguerre polinomial on a given vector of a given degree.
 // For the implementation it used a recursive implementation: L_n(x) = (2n-1-x)L_{n-1}(x) - (n-1)L_{n-2}(x) / n
-Matrix LaguerrePolynomial(const Vector& x, const int degree){
+inline Matrix LaguerrePolynomial(const Vector& x, const int degree){
     Matrix result(x.size(), degree+1);
     result.col(0) = Vector::Ones(x.size()); // L_0(x) = 1
     if (degree >= 1) {
