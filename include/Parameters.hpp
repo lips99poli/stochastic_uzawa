@@ -57,7 +57,7 @@ struct KernelParams{
  * @param degrees Angle in degrees (0, 45, 90, 180, 270, 360, etc.)
  * @return Angle in radians
  */
-double degrees_to_radians(double degrees) {
+inline double degrees_to_radians(double degrees) {
     return degrees * M_PI / 180.0;
 }
 
