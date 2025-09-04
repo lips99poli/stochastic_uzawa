@@ -1,7 +1,0 @@
-T = 1
-N = 20
-D = 1000
-M = 1
-epsilon = 0.01
-delta = 10
-beta = 0.6

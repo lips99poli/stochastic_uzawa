@@ -1,8 +1,0 @@
-sigma = 0.1
-S0 = 100
-I0 = -2
-theta = -20
-omega = 0
-phi = M_PI/2
-k = 1
-psi = 0
