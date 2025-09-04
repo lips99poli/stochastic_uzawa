@@ -95,9 +95,11 @@ private:
 
 public:
     // Note that variables are of time length N, whereas multipliers are of time length N+1
-    StochasticUzawaSolver(const std::string& filename = "data/Parameters.pot") :
-        params(filename),
-
+    
+    // Constructor that takes a Parameters object directly
+    explicit StochasticUzawaSolver(const Parameters& p) :
+        params(p),
+        
         // Split the params object into its components for easier access
         numeric_params(params.get_numeric_params()),
         ou_params(params.get_ou_params()),
@@ -131,14 +133,8 @@ public:
     {
         // Create the appropriate kernel based on the type string
         if (kernel_params.kernel_type == "exp") {
-            if (kernel_params.kernel_parameters.size() != 2) {
-                throw std::invalid_argument("Exponential kernel requires exactly 2 parameters: {c, ro}");
-            }
             kernel = std::make_unique<ExpKernel>(kernel_params.kernel_parameters[0], kernel_params.kernel_parameters[1]);
         } else if (kernel_params.kernel_type == "frac") {
-            if (kernel_params.kernel_parameters.size() != 2) {
-                throw std::invalid_argument("Fractional kernel requires exactly 2 parameters: {c, alpha}");
-            }
             kernel = std::make_unique<FracKernel>(kernel_params.kernel_parameters[0], kernel_params.kernel_parameters[1]);
         } else {
             throw std::invalid_argument("Invalid kernel type: " + kernel_params.kernel_type + 
@@ -206,6 +202,61 @@ public:
             // Increment the iteration counter
             ++n;
         }
+    }
+
+    // Getter methods for the Interface class
+    const Matrix& get_price() const {
+        return price;
+    }
+    
+    const Matrix& get_u() const {
+        if (!u) {
+            throw std::logic_error("Control variable u has not been initialized. Call solve() first.");
+        }
+        return *u;
+    }
+    
+    const Matrix& get_X() const {
+        if (!X_u) {
+            throw std::logic_error("State variable X_u has not been initialized. Call solve() first.");
+        }
+        return *X_u;
+    }
+    
+    const Matrix& get_lambda1() const {
+        if (lambda.empty() || !lambda[0]) {
+            throw std::logic_error("Lagrange multiplier lambda1 has not been initialized. Call solve() first.");
+        }
+        return *lambda[0];
+    }
+    
+    const Matrix& get_lambda2() const {
+        if (lambda.size() < 2 || !lambda[1]) {
+            throw std::logic_error("Lagrange multiplier lambda2 has not been initialized. Call solve() first.");
+        }
+        return *lambda[1];
+    }
+    
+    const Matrix& get_lambda3() const {
+        if (lambda.size() < 3 || !lambda[2]) {
+            throw std::logic_error("Lagrange multiplier lambda3 has not been initialized. Call solve() first.");
+        }
+        return *lambda[2];
+    }
+    
+    const Matrix& get_lambda4() const {
+        if (lambda.size() < 4 || !lambda[3]) {
+            throw std::logic_error("Lagrange multiplier lambda4 has not been initialized. Call solve() first.");
+        }
+        return *lambda[3];
+    }
+    
+    const Vector& get_time_grid() const {
+        return time_grid;
+    }
+    
+    std::size_t iterations() const {
+        return n;
     }
 };
 
