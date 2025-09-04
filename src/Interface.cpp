@@ -31,16 +31,16 @@ std::vector<ParamError> Interface::validate_all(const Parameters& p) {
     if (numeric.delta <= 0) {
         errors.emplace_back("numeric.delta", "Learning rate delta must be positive");
     }
-    if (numeric.beta < 0 || numeric.beta > 1) {
-        errors.emplace_back("numeric.beta", "Learning decay beta must be between 0 and 1");
+    if (numeric.beta <= 0) {
+        errors.emplace_back("numeric.beta", "Learning decay beta must be positive");
     }
     
     // Validate OU parameters
     if (ou.sigma < 0) {
         errors.emplace_back("ou.sigma", "Price volatility sigma must be non-negative");
     }
-    if (ou.S0 <= 0) {
-        errors.emplace_back("ou.S0", "Initial price S0 must be positive");
+    if (ou.S0 < 0) {
+        errors.emplace_back("ou.S0", "Initial price S0 must be non-negative");
     }
     if (ou.k < 0) {
         errors.emplace_back("ou.k", "Mean reversion speed k must be non-negative");
@@ -55,9 +55,6 @@ std::vector<ParamError> Interface::validate_all(const Parameters& p) {
     }
     if (constraints.X_u_min > constraints.X_u_max) {
         errors.emplace_back("constraints.X_bounds", "X_u_min must be <= X_u_max");
-    }
-    if (constraints.X0 < constraints.X_u_min || constraints.X0 > constraints.X_u_max) {
-        errors.emplace_back("constraints.X0", "Initial inventory X0 must be within [X_u_min, X_u_max]");
     }
     
     // Validate kernel parameters
@@ -123,12 +120,8 @@ std::vector<ParamError> Interface::validate_price_only(const Parameters& p) {
 }
 
 void Interface::merge_price_subset(const Parameters& src, Parameters& dst) {
-    // This is tricky because Parameters doesn't expose setters
-    // We need to create a new Parameters object with the merged values
-    // For now, we'll replace the entire frozen_ with the new parameters
-    // This is a simplification - in a real implementation, you might need
-    // to add setter methods to Parameters or refactor it
-    dst = src;
+    // Use the new update_price_parameters method from Parameters class
+    dst.update_price_parameters(src);
 }
 
 std::vector<ParamError> Interface::read_par(const std::string& file_path) {
@@ -137,10 +130,9 @@ std::vector<ParamError> Interface::read_par(const std::string& file_path) {
         auto errors = validate_all(temp_params);
         
         if (errors.empty()) {
-            // No errors - freeze the parameters and reset state
-            frozen_ = temp_params;
-            solver_.reset();
-            price_cache_.reset();
+            // No errors - freeze the parameters and create the solver
+            user_params = std::move(temp_params);
+            solver = std::make_unique<StochasticUzawaSolver>(user_params.value());
         }
         
         return errors;
@@ -150,7 +142,7 @@ std::vector<ParamError> Interface::read_par(const std::string& file_path) {
 }
 
 std::vector<ParamError> Interface::update_price_par(const std::string& file_path) {
-    if (!frozen_.has_value()) {
+    if (!user_params.has_value() || !solver) {
         return {ParamError("state", "Must call read_par() successfully before update_price_par()")};
     }
     
@@ -160,9 +152,9 @@ std::vector<ParamError> Interface::update_price_par(const std::string& file_path
         
         if (errors.empty()) {
             // Merge only price-related parameters
-            merge_price_subset(temp_params, frozen_.value());
-            solver_.reset();
-            price_cache_.reset();
+            user_params->update_price_parameters(temp_params);
+            // Update the solver with new parameters instead of recreating it
+            solver->update_parameters(user_params.value());
         }
         
         return errors;
@@ -172,114 +164,79 @@ std::vector<ParamError> Interface::update_price_par(const std::string& file_path
 }
 
 Eigen::MatrixXd Interface::simulate_price() {
-    if (!frozen_.has_value()) {
+    if (!user_params.has_value() || !solver) {
         throw std::logic_error("Must call read_par() successfully before simulate_price()");
     }
     
-    // Create a temporary solver just for simulation
-    StochasticUzawaSolver temp_solver(frozen_.value());
-    auto price_matrix = temp_solver.simulate_signal();
-    
-    // Cache the price for later use
-    price_cache_ = price_matrix;
-    
-    return price_matrix;
-}
-
-void Interface::start_solver() {
-    if (!frozen_.has_value()) {
-        throw std::logic_error("Must call read_par() successfully before start_solver()");
-    }
-    
-    solver_ = std::make_unique<StochasticUzawaSolver>(frozen_.value());
+    return solver->simulate_signal();
 }
 
 void Interface::solve() {
-    if (!solver_) {
-        throw std::logic_error("Must call start_solver() before solve()");
+    if (!user_params.has_value() || !solver) {
+        throw std::logic_error("Must call read_par() successfully before start_solver()");
     }
     
-    // If price is not already cached in the solver, simulate it first
-    try {
-        solver_->get_price();
-    } catch (const std::exception&) {
-        // Price not available in solver, simulate it
-        solver_->simulate_signal();
-    }
-    
-    solver_->solve();
+    solver->solve();
 }
 
 Eigen::MatrixXd Interface::get_price() {
-    // First try to get from solver
-    if (solver_) {
-        try {
-            return solver_->get_price();
-        } catch (const std::exception&) {
-            // Fall through to cache
-        }
+    if (!solver) {
+        throw std::logic_error("Must call start_solver() and simulate_signal() before accessing price");
     }
-    
-    // Then try cache
-    if (price_cache_.has_value()) {
-        return price_cache_.value();
-    }
-    
-    throw std::logic_error("No price data available. Call simulate_price() or solve() first.");
-}
+    return solver->get_price();}
 
 const Eigen::MatrixXd& Interface::get_u() {
-    if (!solver_) {
+    if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing u");
     }
-    return solver_->get_u();
+    return solver->get_u();
 }
 
 const Eigen::MatrixXd& Interface::get_X() {
-    if (!solver_) {
+    if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing X");
     }
-    return solver_->get_X();
+    return solver->get_X();
 }
 
 const Eigen::MatrixXd& Interface::get_lambda1() {
-    if (!solver_) {
+    if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing lambda1");
     }
-    return solver_->get_lambda1();
+    return solver->get_lambda1();
 }
 
 const Eigen::MatrixXd& Interface::get_lambda2() {
-    if (!solver_) {
+    if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing lambda2");
     }
-    return solver_->get_lambda2();
+    return solver->get_lambda2();
 }
 
 const Eigen::MatrixXd& Interface::get_lambda3() {
-    if (!solver_) {
+    if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing lambda3");
     }
-    return solver_->get_lambda3();
+    return solver->get_lambda3();
 }
 
 const Eigen::MatrixXd& Interface::get_lambda4() {
-    if (!solver_) {
+    if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing lambda4");
     }
-    return solver_->get_lambda4();
+    return solver->get_lambda4();
 }
 
 const Eigen::VectorXd& Interface::get_time_grid() {
-    if (!solver_) {
+    if (!solver) {
         throw std::logic_error("Must call start_solver() before accessing time_grid");
     }
-    return solver_->get_time_grid();
+    return solver->get_time_grid();
 }
 
 std::size_t Interface::iterations() {
-    if (!solver_) {
+    if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing iterations");
     }
-    return solver_->iterations();
+    return solver->iterations();
 }

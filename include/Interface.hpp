@@ -18,9 +18,8 @@ struct ParamError {
 
 class Interface {
 private:
-    std::optional<Parameters> frozen_;
-    std::unique_ptr<StochasticUzawaSolver> solver_;
-    std::optional<Eigen::MatrixXd> price_cache_;
+    std::optional<Parameters> user_params;
+    std::unique_ptr<StochasticUzawaSolver> solver;
     
     // Internal validation helpers
     std::vector<ParamError> validate_all(const Parameters& p);
@@ -37,7 +36,6 @@ public:
     
     // Simulation and solving
     Eigen::MatrixXd simulate_price();
-    void start_solver();
     void solve();
     
     // Getters
