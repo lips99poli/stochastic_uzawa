@@ -47,7 +47,7 @@ public:
     const Eigen::MatrixXd& get_lambda3() const;
     const Eigen::MatrixXd& get_lambda4() const;
     const Eigen::VectorXd& get_time_grid() const;
-    const std::size_t iterations() const;
+    const std::size_t get_iterations() const;
 };
 
 #endif // INTERFACE_HPP

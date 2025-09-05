@@ -234,7 +234,7 @@ const Eigen::VectorXd& Interface::get_time_grid() const{
     return solver->get_time_grid();
 }
 
-const std::size_t Interface::iterations() const{
+const std::size_t Interface::get_iterations() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing iterations");
     }
