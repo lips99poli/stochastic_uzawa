@@ -1,0 +1,33 @@
+[build-system]
+requires = ["scikit-build-core", "pybind11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "stochastic_uzawa"
+version = "0.1.0"
+description = "Stochastic Uzawa Solver with Python bindings"
+authors = [{name = "Your Name", email = "your.email@example.com"}]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = [
+    "matplotlib",
+]
+
+[tool.scikit-build]
+cmake.args = ["-DBUILD_BINDINGS=ON"]
+
+[tool.pybind11.cmake]
+args = [
+    "-DBUILD_BINDINGS=ON",
+    "-DCMAKE_BUILD_TYPE=Release",
+]
+
+[tool.pybind11.setup_kwargs]
+cmake_source_dir = "."
+cmake_install_dir = "stochastic_uzawa"
