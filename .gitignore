@@ -22,3 +22,25 @@ uzawa_exec
 
 # Backup files
 *~
+
+# Python virtual envs
+.venv/
+/venv/
+venv/
+env/
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.dist-info/
+build/
+dist/
+wheelhouse/
+
+# Compiled extensions
+*.so
+*.dylib
+*.pyd
