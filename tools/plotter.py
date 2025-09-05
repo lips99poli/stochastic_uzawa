@@ -49,27 +49,26 @@ class Plotter:
     def plot_all_variables(self):
         """Generate plots for all variables and save them."""
         time_grid = self.data.get("TIME_GRID", np.array([[]]))[0]  # First row
-        print(f"Time grid: {time_grid}")
-        print(f"Available variables: {list(self.data.keys())}")
-        print(f"Iterations: {self.iterations}")
+        
+        print("Plotting variables...")
         
         # Plot each variable
         for var_name in ["PRICE", "U", "X", "LAMBDA1", "LAMBDA2", "LAMBDA3", "LAMBDA4"]:
             if var_name in self.data:
-                print(f"Plotting {var_name}...")
                 matrix = self.data[var_name]
                 # Adjust time grid to match matrix columns
                 plot_time_grid = time_grid[:matrix.shape[1]] if len(time_grid) > matrix.shape[1] else time_grid
                 self._plot_variable(var_name, matrix, plot_time_grid)
-            else:
-                print(f"Variable {var_name} not found in data")
+        
+        print(f"Plots saved in {self.output_dir}")
     
     def _plot_variable(self, var_name, matrix, time_grid):
         """Plot a single variable matrix."""
         plt.figure(figsize=(10, 6))
         
-        # Plot each path (row) in the matrix
-        for i in range(matrix.shape[0]):
+        # Plot only the first 10 paths (rows) in the matrix
+        num_paths = min(10, matrix.shape[0])
+        for i in range(num_paths):
             plt.plot(time_grid, matrix[i], label=f'Path {i+1}', marker='o')
         
         plt.xlabel('Time')
@@ -82,8 +81,6 @@ class Plotter:
         output_file = self.output_dir / f'{var_name.lower()}_plot.png'
         plt.savefig(output_file, dpi=150, bbox_inches='tight')
         plt.close()
-        
-        print(f"Saved plot: {output_file}")
 
 
 if __name__ == "__main__":
