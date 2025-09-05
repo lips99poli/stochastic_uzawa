@@ -45,7 +45,7 @@ echo "=== Step 3: Running test ==="
 echo "=== Step 4: Generating plots ==="
 cd "$PROJECT_ROOT"
 source venv/bin/activate
-python tools/plotter.py "outputs/$ABS_OUTPUT_FOLDER/variables.txt"
+python tools/plotter.py "outputs/cpp/$ABS_OUTPUT_FOLDER/variables.txt"
 
 echo "=== Workflow completed successfully! ==="
-echo "Results in: $PROJECT_ROOT/outputs/$ABS_OUTPUT_FOLDER"
+echo "Results in: $PROJECT_ROOT/outputs/cpp/$ABS_OUTPUT_FOLDER"
