@@ -7,21 +7,21 @@ This directory contains automation scripts for the Stochastic Uzawa project. The
 ### 🚀 **run_app.sh** - Interactive Experiment Launcher
 Launches the interactive experiment application with automatic environment setup.
 
-**Usage:** `./run_app.sh [setup_option] [parameter_file] [output_folder]`
+**Usage:** `./run_app.sh <setup_option> <parameter_file> [output_folder]`
 
 **Parameters:**
-- `setup_option` (default: `soft`): Environment setup mode
+- `setup_option` (required): Environment setup mode
   - `soft`: Use existing environment if available
   - `hard`: Force recreate environment and reinstall everything
   - `lib`: Keep environment, reinstall library only
-- `parameter_file` (default: `data/Parameters.pot`): Path to parameter file
-- `output_folder` (default: `exp_YYYYMMDD_HHMMSS`): Output folder name (created under `outputs/app/`)
+- `parameter_file` (required): Path to parameter file
+- `output_folder` (optional): Output folder name (created under `outputs/app/`), defaults to timestamped folder
 
 **Examples:**
 ```bash
-./run_app.sh                                    # Default: soft setup, default params, timestamped folder
-./run_app.sh soft data/Parameters.pot my_exp   # Custom experiment name
-./run_app.sh hard                               # Force clean setup
+./run_app.sh soft data/Parameters.pot                    # Default timestamped folder
+./run_app.sh soft data/Parameters.pot my_experiment      # Custom experiment name  
+./run_app.sh hard data/Parameters.pot                    # Force clean setup
 ```
 
 ---
@@ -95,7 +95,7 @@ Comprehensive cleaning tool for managing project artifacts and builds.
 ### Quick Start (First Time Setup)
 ```bash
 # Setup environment and run interactive experiment
-./run_app.sh hard
+./run_app.sh hard data/Parameters.pot
 
 # Or step by step:
 ./python_setup.sh hard
@@ -110,7 +110,7 @@ python ../apps/interactive_experiment.py data/Parameters.pot my_experiment
 
 # After code changes, reinstall library and test
 ./python_setup.sh lib
-./run_app.sh soft
+./run_app.sh soft data/Parameters.pot
 ```
 
 ### Maintenance
@@ -125,7 +125,7 @@ python ../apps/interactive_experiment.py data/Parameters.pot my_experiment
 
 # Full cleanup and restart
 ./cleaner.sh reset
-./run_app.sh hard
+./run_app.sh hard data/Parameters.pot
 ```
 
 ---
