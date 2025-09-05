@@ -1,3 +1,6 @@
+#Ignore outputs
+out*/
+
 # Ignore build directory
 /build/
 
