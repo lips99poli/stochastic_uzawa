@@ -11,12 +11,13 @@ show_help() {
     echo "  python     - Remove outputs/python"
     echo "  build_cpp  - Remove tests/cpp/build"
     echo "  build_py   - Remove all __pycache__ directories"
+    echo "  params     - Remove all files in data/ except Parameters.pot and README.md"
     echo "  venv       - Remove venv"
     echo "  su_lib     - Uninstall stochastic_uzawa library"
     echo "  outputs    - Remove entire outputs directory"
     echo "  all        - Clean everything except venv and library"
     echo "  reset      - Clean everything including venv and library"
-    echo "  [path]     - Remove specific experiment folder"
+    echo "  [path]     - Remove specific folder or file"
     echo "  help       - Show this help"
 }
 
@@ -44,6 +45,11 @@ case "$OPTION" in
     "build_py")
         echo "Removing __pycache__ directories in tools/..."
         rm -rf tools/__pycache__/
+        echo "Done."
+        ;;
+    "params")
+        echo "Removing all files in data/ except Parameters.pot and README.md..."
+        find data/ -type f ! -name "Parameters.pot" ! -name "README.md" -delete 2>/dev/null || true
         echo "Done."
         ;;
     "venv")
@@ -74,6 +80,8 @@ case "$OPTION" in
         rm -rf tests/cpp/build
         echo "Removing __pycache__ directories in tools/..."
         rm -rf tools/__pycache__/
+        echo "Removing all files in data/ except Parameters.pot and README.md..."
+        find data/ -type f ! -name "Parameters.pot" ! -name "README.md" -delete 2>/dev/null || true
         echo "All cleaning completed."
         ;;
     "reset")
@@ -84,6 +92,8 @@ case "$OPTION" in
         rm -rf tests/cpp/build
         echo "Removing __pycache__ directories in tools/..."
         rm -rf tools/__pycache__/
+        echo "Removing all files in data/ except Parameters.pot and README.md..."
+        find data/ -type f ! -name "Parameters.pot" ! -name "README.md" -delete 2>/dev/null || true
         echo "Uninstalling stochastic_uzawa library..."
         if [ -d "venv" ]; then
             source venv/bin/activate
