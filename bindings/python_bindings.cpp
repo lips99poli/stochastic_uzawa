@@ -165,7 +165,7 @@ PYBIND11_MODULE(stochastic_uzawa, m) {
                     numpy.ndarray: Time grid vector of length N+1 from 0 to T
              )pbdoc")
         
-        .def("iterations", &Interface::get_iterations,
+        .def("get_iterations", &Interface::get_iterations,
              "Get the number of iterations used in the last solve",
              R"pbdoc(
                 Returns:
