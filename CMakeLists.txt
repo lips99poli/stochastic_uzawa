@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(StochasticUzawa CXX)
 
+# Option to build Python bindings
+option(BUILD_BINDINGS "Build Python bindings" OFF)
+
 # C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -40,11 +43,19 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # All source files (library sources + test source)
 file(GLOB_RECURSE ALL_SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp")
-list(APPEND ALL_SOURCES "${CMAKE_SOURCE_DIR}/tests/cpp/test_cpp.cpp")
 
-# Test executable - compile everything together
-add_executable(test_cpp ${ALL_SOURCES})
-target_link_libraries(test_cpp Eigen3::Eigen OpenMP::OpenMP_CXX)
-
-# Link filesystem library for std::filesystem (needed in C++17)
-target_link_libraries(test_cpp stdc++fs)
+if(BUILD_BINDINGS)
+    # Build Python bindings
+    message(STATUS "Building with Python bindings")
+    # TODO: Add pybind11 and bindings compilation here
+else()
+    # Build test executable
+    message(STATUS "Building test executable only")
+    list(APPEND ALL_SOURCES "${CMAKE_SOURCE_DIR}/tests/cpp/test_cpp.cpp")
+    
+    add_executable(test_cpp ${ALL_SOURCES})
+    target_link_libraries(test_cpp Eigen3::Eigen OpenMP::OpenMP_CXX)
+    
+    # Link filesystem library for std::filesystem (needed in C++17)
+    target_link_libraries(test_cpp stdc++fs)
+endif()
