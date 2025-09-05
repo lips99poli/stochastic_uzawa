@@ -20,8 +20,6 @@ uzawa_exec
 *.swp
 .DS_Store
 
-# Backup files
-*~
 
 # Python virtual envs
 .venv/
@@ -44,3 +42,6 @@ wheelhouse/
 *.so
 *.dylib
 *.pyd
+
+# Backup files
+*~
