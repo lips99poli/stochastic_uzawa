@@ -8,6 +8,15 @@ option(BUILD_BINDINGS "Build Python bindings" OFF)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Compiler flags
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+
+# Default to Release if not specified
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
 # Set binary directory to tests/cpp/build
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/tests/cpp/build)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
@@ -47,7 +56,46 @@ file(GLOB_RECURSE ALL_SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp")
 if(BUILD_BINDINGS)
     # Build Python bindings
     message(STATUS "Building with Python bindings")
-    # TODO: Add pybind11 and bindings compilation here
+    
+    # Find Python and pybind11
+    find_package(Python COMPONENTS Interpreter Development REQUIRED)
+    
+    # Try to find pybind11, fallback to Python module import
+    find_package(pybind11 QUIET)
+    if(NOT pybind11_FOUND)
+        message(STATUS "pybind11 not found via CMake, trying Python import")
+        execute_process(
+            COMMAND ${Python_EXECUTABLE} -m pybind11 --cmakedir
+            OUTPUT_VARIABLE pybind11_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            RESULT_VARIABLE pybind11_RESULT
+        )
+        if(pybind11_RESULT EQUAL 0)
+            message(STATUS "Found pybind11 via Python at: ${pybind11_DIR}")
+            find_package(pybind11 REQUIRED PATHS ${pybind11_DIR})
+        else()
+            message(FATAL_ERROR "pybind11 not found. Install with: pip install pybind11")
+        endif()
+    endif()
+    
+    # Create Python module
+    pybind11_add_module(stochastic_uzawa 
+        ${ALL_SOURCES}
+        ${CMAKE_SOURCE_DIR}/bindings/python_bindings.cpp
+    )
+    
+    # Link libraries to the Python module
+    target_link_libraries(stochastic_uzawa PRIVATE 
+        Eigen3::Eigen 
+        OpenMP::OpenMP_CXX
+    )
+    
+    # Install the Python module
+    install(TARGETS stochastic_uzawa DESTINATION .)
+    
+    # Set properties for the Python module
+    target_compile_definitions(stochastic_uzawa PRIVATE VERSION_INFO=${PROJECT_VERSION})
+    
 else()
     # Build test executable
     message(STATUS "Building test executable only")
