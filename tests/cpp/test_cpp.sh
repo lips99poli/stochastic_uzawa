@@ -1,17 +1,22 @@
 #!/bin/bash
 
 # test_cpp.sh - Complete workflow for C++ test
-# Usage: ./test_cpp.sh [path_to_par] [output_folder_name]
+# Usage: ./test_cpp.sh <parameter_file> [output_folder_name]
 
 set -e  # Exit on any error
 
-# Default values
-DEFAULT_PAR_FILE="data/Parameters.pot"
-DEFAULT_OUTPUT_FOLDER="exp_$(date +%Y%m%d_%H%M%S)"
+# Check for required arguments
+if [[ $# -lt 1 ]]; then
+    echo "Error: Missing required parameter file argument"
+    echo "Usage: ./test_cpp.sh <parameter_file> [output_folder_name]"
+    echo "  parameter_file: Path to parameter file (required)"
+    echo "  output_folder_name: Output folder name (optional, default: timestamped)"
+    exit 1
+fi
 
 # Parse arguments
-PAR_FILE="${1:-$DEFAULT_PAR_FILE}"
-OUTPUT_FOLDER="${2:-$DEFAULT_OUTPUT_FOLDER}"
+PAR_FILE="$1"
+OUTPUT_FOLDER=${2:-exp_$(date +%Y%m%d_%H%M%S)}
 
 echo "=== Stochastic Uzawa C++ Test Workflow ==="
 echo "Parameter file: $PAR_FILE"

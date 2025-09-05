@@ -1,10 +1,20 @@
 #!/bin/bash
 
 # Python bindings test workflow script
-# Usage: ./test_bindings.sh [soft|hard|lib] [parameter_file] [output_folder_name]
+# Usage: ./test_bindings.sh <soft|hard|lib> <parameter_file> [output_folder_name]
 
-OPTION=${1:-soft}
-PARAMETER_FILE=${2:-data/Parameters.pot}
+# Check for required arguments
+if [[ $# -lt 2 ]]; then
+    echo "Error: Missing required arguments"
+    echo "Usage: ./test_bindings.sh <soft|hard|lib> <parameter_file> [output_folder_name]"
+    echo "  soft|hard|lib: Environment setup option (required)"
+    echo "  parameter_file: Path to parameter file (required)"
+    echo "  output_folder_name: Output folder name (optional, default: timestamped)"
+    exit 1
+fi
+
+OPTION="$1"
+PARAMETER_FILE="$2"
 OUTPUT_FOLDER=${3:-exp_$(date +%Y%m%d_%H%M%S)}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
