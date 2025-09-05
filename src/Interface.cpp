@@ -179,62 +179,62 @@ void Interface::solve() {
     solver->solve();
 }
 
-Eigen::MatrixXd Interface::get_price() {
+const Eigen::MatrixXd& Interface::get_price() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() and simulate_signal() before accessing price");
     }
     return solver->get_price();}
 
-const Eigen::MatrixXd& Interface::get_u() {
+const Eigen::MatrixXd& Interface::get_u() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing u");
     }
     return solver->get_u();
 }
 
-const Eigen::MatrixXd& Interface::get_X() {
+const Eigen::MatrixXd& Interface::get_X() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing X");
     }
     return solver->get_X();
 }
 
-const Eigen::MatrixXd& Interface::get_lambda1() {
+const Eigen::MatrixXd& Interface::get_lambda1() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing lambda1");
     }
     return solver->get_lambda1();
 }
 
-const Eigen::MatrixXd& Interface::get_lambda2() {
+const Eigen::MatrixXd& Interface::get_lambda2() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing lambda2");
     }
     return solver->get_lambda2();
 }
 
-const Eigen::MatrixXd& Interface::get_lambda3() {
+const Eigen::MatrixXd& Interface::get_lambda3() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing lambda3");
     }
     return solver->get_lambda3();
 }
 
-const Eigen::MatrixXd& Interface::get_lambda4() {
+const Eigen::MatrixXd& Interface::get_lambda4() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing lambda4");
     }
     return solver->get_lambda4();
 }
 
-const Eigen::VectorXd& Interface::get_time_grid() {
+const Eigen::VectorXd& Interface::get_time_grid() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() before accessing time_grid");
     }
     return solver->get_time_grid();
 }
 
-std::size_t Interface::iterations() {
+const std::size_t Interface::iterations() const{
     if (!solver) {
         throw std::logic_error("Must call start_solver() and solve() before accessing iterations");
     }

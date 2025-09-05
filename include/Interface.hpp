@@ -39,15 +39,15 @@ public:
     void solve();
     
     // Getters
-    Eigen::MatrixXd get_price();
-    const Eigen::MatrixXd& get_u();
-    const Eigen::MatrixXd& get_X();
-    const Eigen::MatrixXd& get_lambda1();
-    const Eigen::MatrixXd& get_lambda2();
-    const Eigen::MatrixXd& get_lambda3();
-    const Eigen::MatrixXd& get_lambda4();
-    const Eigen::VectorXd& get_time_grid();
-    std::size_t iterations();
+    const Eigen::MatrixXd& get_price() const;
+    const Eigen::MatrixXd& get_u() const;
+    const Eigen::MatrixXd& get_X() const;
+    const Eigen::MatrixXd& get_lambda1() const;
+    const Eigen::MatrixXd& get_lambda2() const;
+    const Eigen::MatrixXd& get_lambda3() const;
+    const Eigen::MatrixXd& get_lambda4() const;
+    const Eigen::VectorXd& get_time_grid() const;
+    const std::size_t iterations() const;
 };
 
 #endif // INTERFACE_HPP
