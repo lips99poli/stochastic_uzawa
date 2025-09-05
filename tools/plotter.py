@@ -11,7 +11,7 @@ class Plotter:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
-    def plot_variable(self, var_name, time_grid, matrix, iterations=100):
+    def plot_variable(self, var_name, time_grid, matrix, iterations=0):
         """Plot a variable and save to output directory."""
         time_values = time_grid[:-1]  # Exclude last value
         matrix = np.array(matrix)
