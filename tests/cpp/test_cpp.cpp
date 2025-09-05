@@ -37,7 +37,7 @@ void write_matrices_to_file(const std::string& output_dir, const Interface& inte
     
     try {
         // Write iterations first
-        file << "ITERATIONS=" << interface.iterations() << std::endl;
+        file << "ITERATIONS=" << interface.get_iterations() << std::endl;
         
         // Write time grid
         file << "TIME_GRID=" << std::endl;
@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
     std::filesystem::path project_root = current_path.parent_path().parent_path().parent_path();
     
     // Create full output path
-    std::string output_dir = project_root / "outputs" / output_folder_name;
+    std::string output_dir = project_root / "outputs" / "cpp" / output_folder_name;
     
     std::cout << "Project root: " << project_root << std::endl;
     std::cout << "Using parameter file: " << input_file << std::endl;
