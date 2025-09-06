@@ -45,13 +45,18 @@ if(NOT Eigen3_FOUND)
     endif()
 endif()
 
-find_package(OpenMP REQUIRED)
+find_package(OpenMP QUIET)  # Optional now
+if(OpenMP_FOUND)
+    message(STATUS "OpenMP found but NOT using it - Eigen optimization enabled")
+else()
+    message(STATUS "OpenMP not found - using Eigen optimization")
+endif()
 
-# Disable Eigen's automatic parallelization since we use OpenMP manually
-add_compile_definitions(EIGEN_DONT_PARALLELIZE)
-
-# Additional Eigen optimizations for better performance with OpenMP
-add_compile_definitions(EIGEN_NO_AUTOMATIC_RESIZING)
+# Enable Eigen's automatic parallelization and optimizations
+add_compile_definitions(EIGEN_USE_BLAS)
+add_compile_definitions(EIGEN_USE_LAPACKE)
+# Remove EIGEN_DONT_PARALLELIZE to enable Eigen threading
+# Remove EIGEN_NO_AUTOMATIC_RESIZING to allow Eigen optimizations
 
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)
@@ -92,9 +97,16 @@ if(BUILD_BINDINGS)
     
     # Link libraries to the Python module
     target_link_libraries(stochastic_uzawa PRIVATE 
-        Eigen3::Eigen 
-        OpenMP::OpenMP_CXX
+        Eigen3::Eigen
     )
+    
+    # Add BLAS/LAPACK if available for maximum performance
+    find_package(BLAS QUIET)
+    find_package(LAPACK QUIET)
+    if(BLAS_FOUND AND LAPACK_FOUND)
+        target_link_libraries(stochastic_uzawa PRIVATE ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+        message(STATUS "Linked with BLAS/LAPACK for optimal Eigen performance")
+    endif()
     
     # Install the Python module
     install(TARGETS stochastic_uzawa DESTINATION .)
@@ -108,7 +120,15 @@ else()
     list(APPEND ALL_SOURCES "${CMAKE_SOURCE_DIR}/tests/cpp/test_cpp.cpp")
     
     add_executable(test_cpp ${ALL_SOURCES})
-    target_link_libraries(test_cpp Eigen3::Eigen OpenMP::OpenMP_CXX)
+    target_link_libraries(test_cpp Eigen3::Eigen)
+    
+    # Add BLAS/LAPACK if available for maximum performance
+    find_package(BLAS QUIET)
+    find_package(LAPACK QUIET)
+    if(BLAS_FOUND AND LAPACK_FOUND)
+        target_link_libraries(test_cpp ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+        message(STATUS "Linked with BLAS/LAPACK for optimal Eigen performance")
+    endif()
     
     # Link filesystem library for std::filesystem (needed in C++17)
     target_link_libraries(test_cpp stdc++fs)

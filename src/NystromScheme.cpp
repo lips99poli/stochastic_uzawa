@@ -34,7 +34,7 @@ void NystromScheme::construct_L_and_U() {
     U = Matrix::Zero(N, N);
     
     // Parallelize the construction of L and U matrices
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i) {
         for (std::size_t j = 0; j < i; ++j) { // int_tj^tj+1 of K(t_i, s)
             L(i, j) = kernel.s_integral(time_grid(i), time_grid(j), time_grid(j + 1));
@@ -50,7 +50,7 @@ void NystromScheme::construct_inv_Dt() {
     inv_Dt.resize(N);
     inv_Dt[0] = (I_N + L + U).inverse();
     
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for(par_for_type i = 1; i < static_cast<par_for_type>(N); ++i) {
         // Matrix Kt_i is matrix L where the first i columns and i rows are zero
         Matrix Kt_i = Matrix::Zero(N, N);
@@ -71,7 +71,7 @@ void NystromScheme::construct_B_and_a_operator() {
     a_operator = Matrix::Zero(N, N);
     
     // Parallelize the construction of a_operator and B
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i) {
         a_operator.row(i) = U.row(i) * inv_Dt[i];
         for(std::size_t j = 0; j < i; ++j) {
@@ -97,14 +97,14 @@ void NystromScheme::nystrom_update() {
     R_sum_Gamma.resize(M);
     
     // Parallelize the R_sum_Gamma computation
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m) {
         R_sum_Gamma[m] = R[m] + Gamma[m];
     }
     
     // Update the control variable u based on the Nystrom scheme
     // Parallelize over Monte Carlo paths
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m) {
         Vector a(N);
         for (std::size_t i = 0; i < N; ++i) {

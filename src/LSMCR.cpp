@@ -23,7 +23,7 @@ void LSMCR::precompute_target_i(){
     
     // Compute cumulative sum from right to left for efficiency
     // Parallelize over paths (rows)
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m) {
         double cumsum = 0.0;
         for (int j = static_cast<int>(N)-1; j >= 0; --j) {
@@ -38,7 +38,7 @@ void LSMCR::precompute_target_ij(){
     target_ij = Matrix::Zero(M, N-1);
     
     // Parallelize over time steps
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type j = 0; j < static_cast<par_for_type>(N-1); ++j){
         // Recall that target_i are already shifted by 1 in time
         target_ij.col(j) = target_i.col(j+1) + diff_lambda_1_2.col(j+1);
@@ -51,7 +51,7 @@ void LSMCR::precompute_regressors_i(){
     regressors_i.resize(N);
     
     // Parallelize over time steps
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for(par_for_type i = 0; i < static_cast<par_for_type>(N); ++i){
         // The matrix PHI_i will be of dimension Mx(d1+3 choose 3), where M is the number of sample paths.
         // Each column of PHI_i will contain all possible combinations of multiplication of Laguerre polynomials of the three variables such that the sum of the degrees is less than or equal to d1.
@@ -79,7 +79,7 @@ void LSMCR::precompute_regressors_ij(){
     regressors_ij.resize(N-1);
     
     // Parallelize over time steps
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for(par_for_type i = 0; i < static_cast<par_for_type>(N-1); ++i){
         // The matrix PHI_i will be of dimension Mx(d2+3 choose 3), where M is the number of sample paths.
         // Each column of PHI_i will contain all possible combinations of multiplication of Laguerre polynomials of the three variables such that the sum of the degrees is less than or equal to d2.
@@ -107,7 +107,7 @@ void LSMCR::regression_i(){
     // The final output will be the matrix coeffs_i of size ((d1+3  3), N)
     
     // Parallelize over time steps - each QR decomposition is independent
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i) {
         // Construct matrix PHI_i
         const Matrix& PHI_i = regressors_i[i];
@@ -130,7 +130,7 @@ void LSMCR::regression_ij(){
     }
     
     // Parallelize over all (i,j) pairs
-    #pragma omp parallel for collapse(2)
+    // #pragma omp parallel for collapse(2)
     for (par_for_type i = 0; i < static_cast<par_for_type>(N-1); ++i) {
         for (par_for_type j_idx = 0; j_idx < static_cast<par_for_type>(N-1-i); ++j_idx) {
             std::size_t j = i + j_idx;
@@ -144,7 +144,7 @@ void LSMCR::estimate_conditional_expectation_i() {
     cond_exp_i = Matrix::Zero(M, N);
     
     // Parallelize over time steps
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i){
         cond_exp_i.col(i) = regressors_i[i] * coeff_i.col(i);
     }
@@ -161,7 +161,7 @@ void LSMCR::estimate_conditional_expectation_ij() {
     }
     
     // Parallelize over all (i,j) pairs
-    #pragma omp parallel for collapse(2)
+    // #pragma omp parallel for collapse(2)
     for (par_for_type i = 0; i < static_cast<par_for_type>(N-1); ++i){
         for (par_for_type j_idx = 0; j_idx < static_cast<par_for_type>(N-1-i); ++j_idx){
             cond_exp_ij[i].col(j_idx) = regressors_ij[i] * coeff_ij[i].col(j_idx);
@@ -182,7 +182,7 @@ void LSMCR::update_regressor(){
     
     // Compute the Laguerre polynomials for each variable in parallel
     int degree = std::max(d1, d2);
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type i = 0; i < static_cast<par_for_type>(N); ++i) {
         laguerre_alpha[i] = LaguerrePolynomial(alpha.col(i), degree);
         laguerre_Z_u[i] = LaguerrePolynomial(Z_u.col(i), degree);
@@ -191,13 +191,13 @@ void LSMCR::update_regressor(){
     
     // LAMBDA1 - LAMBDA2 and LAMBDA3 - LAMBDA4
     // Parallelize matrix operations
-    #pragma omp parallel sections
+    // #pragma omp parallel sections
     {
-        #pragma omp section
+        // #pragma omp section
         {
             diff_lambda_1_2 = (*lambda[0]) - (*lambda[1]);
         }
-        #pragma omp section
+        // #pragma omp section
         {
             diff_lambda_3_4 = (*lambda[2]) - (*lambda[3]);
         }
@@ -226,7 +226,7 @@ MatVec LSMCR::estimate_gamma(){
     MatVec Gamma(M, Matrix::Zero(N, N));
     
     // Parallelize over simulation paths
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m){
         // Fill diagonal
         Gamma[m].diagonal() = cond_exp_i.row(m) + diff_lambda_1_2.row(m);

@@ -43,7 +43,7 @@ Matrix OUSimulator::generateBrownianMotion(const size_t M, int seed) const{
     Vector sqrt_dt = time_delta.array().sqrt();
     
     // Parallelize over paths (rows) - each thread handles complete paths independently
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m) {
         std::mt19937_64 gen(seed + m); // Different seed for each path
         std::normal_distribution<double> Z(0.0, 1.0);
@@ -62,7 +62,7 @@ Matrix OUSimulator::generateOrnsteinUhlenbeck(const std::size_t M, int seed) con
 
     // Precompute A(t)
     std::vector<double> A_t(ou_params.N);
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type i = 0; i < static_cast<par_for_type>(ou_params.N); ++i) {
         A_t[i] = ou_params.theta * std::sin(ou_params.omega * time_grid(i) + ou_params.phi);
     }
@@ -71,7 +71,7 @@ Matrix OUSimulator::generateOrnsteinUhlenbeck(const std::size_t M, int seed) con
     OU.col(0).setConstant(ou_params.I0);
 
     // Version using SDE - each path computed independently to avoid race conditions
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type m = 0; m < static_cast<par_for_type>(BM.rows()); ++m) { //fix sample_path
         for(size_t i = 1; i < static_cast<size_t>(BM.cols()); ++i){ //fix time instant
             OU(m, i) = OU(m, i - 1) + (A_t[i] - ou_params.k * OU(m, i - 1)) * time_delta(i-1) + ou_params.psi * (BM(m, i) - BM(m, i - 1));
@@ -102,7 +102,7 @@ void OUSimulator::compute_alpha_R(const std::size_t M) {
     const double theta_over_den = ou_params.theta / (ou_params.k * ou_params.k + ou_params.omega * ou_params.omega);
 
     std::vector<double> sin_omega_ti_phi(ou_params.N), cos_omega_ti_phi(ou_params.N), exp_neg_k_T_ti(ou_params.N);
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type i = 0; i < static_cast<par_for_type>(ou_params.N); ++i) {
         const double t_i = time_grid(i);
         sin_omega_ti_phi[i] = std::sin(ou_params.omega * t_i + ou_params.phi);
@@ -112,7 +112,7 @@ void OUSimulator::compute_alpha_R(const std::size_t M) {
 
     // Precompute coeff first row term
     Matrix coeff_first_term_ij = Matrix::Zero(ou_params.N, ou_params.N);
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type i = 0; i < static_cast<par_for_type>(ou_params.N); ++i) {
         for (par_for_type j = i; j < static_cast<par_for_type>(ou_params.N); ++j) {
             coeff_first_term_ij(i,j) = (std::exp(ou_params.k * (time_grid(i)-time_grid(j))) - exp_neg_k_T_ti[j]) / ou_params.k;
@@ -122,7 +122,7 @@ void OUSimulator::compute_alpha_R(const std::size_t M) {
     // Precompute second row term
     std::vector<double> second_row_term(ou_params.N, 0.0);
     if(ou_params.omega != 0){
-        #pragma omp parallel for schedule(static)
+        // #pragma omp parallel for schedule(static)
         for (par_for_type i = 0; i < static_cast<par_for_type>(ou_params.N); ++i) {
             second_row_term[i] = theta_over_den * ( 
                 ou_params.k/ou_params.omega * (std::cos(omega_T_phi) - cos_omega_ti_phi[i]) + 
@@ -134,7 +134,7 @@ void OUSimulator::compute_alpha_R(const std::size_t M) {
     R.clear();
     R.resize(M);
     // Compute R and alpha
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (par_for_type m = 0; m < static_cast<par_for_type>(M); ++m) { //fix path
         Matrix R_m = Matrix::Zero(ou_params.N, ou_params.N);
 
