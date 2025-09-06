@@ -9,7 +9,8 @@
 #include <iomanip>
 #include <cmath>
 #include <algorithm>
-// Note: OpenMP removed - using Eigen optimization instead
+#include <Eigen/Core>
+// Note: Using Eigen optimization with BLAS/LAPACK and threading control
 
 void print_errors(const std::vector<ParamError>& errors) {
     std::cerr << "Parameter validation errors:\n";
@@ -162,137 +163,94 @@ int main(int argc, char* argv[]) {
     std::cout << "Signal simulation completed in: " << signal_timer.wallTime() << " microseconds. Generated price matrix of size: " 
                 << price_matrix.rows() << " x " << price_matrix.cols() << std::endl;
     
-    // Eigen optimization performance test - Multiple runs for consistent timing
-    const int num_runs = 5; // Number of performance test runs
+    // Eigen+BLAS/LAPACK performance test with different thread counts
+    std::vector<int> thread_counts = {1, 2, 4, 6, 8, 12}; // Progressive thread counts up to 12 cores
     std::vector<double> solver_times;
-    std::vector<double> signal_times; 
+    std::vector<double> signal_times;
     
     std::cout << "\n" << std::string(70, '=') << std::endl;
-    std::cout << "EIGEN OPTIMIZATION PERFORMANCE TESTING" << std::endl;
-    std::cout << "Running " << num_runs << " iterations for consistent timing" << std::endl;
+    std::cout << "EIGEN+BLAS/LAPACK PERFORMANCE TESTING WITH DIFFERENT THREAD COUNTS" << std::endl;
     std::cout << std::string(70, '=') << std::endl;
     
     Interface* final_interface = nullptr;
     
-    for (int run = 1; run <= num_runs; ++run) {
-        std::cout << "\n--- Performance Run " << run << "/" << num_runs << " ---" << std::endl;
+    for (size_t i = 0; i < thread_counts.size(); ++i) {
+        int num_threads = thread_counts[i];
+        std::cout << "\n--- Testing with " << num_threads << " thread(s) ---" << std::endl;
+        
+        // Set Eigen thread count
+        Eigen::setNbThreads(num_threads);
+        std::cout << "Eigen threads set to: " << Eigen::nbThreads() << std::endl;
         
         // Create a fresh interface for this test
         Interface* test_interface = new Interface();
         test_interface->read_par(input_file);
         
         // Signal simulation timing
-        std::cout << "Signal simulation (run " << run << ")..." << std::endl;
-        Timings::Chrono run_signal_timer;
-        run_signal_timer.start();
+        std::cout << "Re-simulating signal with " << num_threads << " threads..." << std::endl;
+        Timings::Chrono thread_signal_timer;
+        thread_signal_timer.start();
         test_interface->simulate_price();
-        run_signal_timer.stop();
-        signal_times.push_back(run_signal_timer.wallTime());
-        std::cout << "Signal simulation: " << run_signal_timer.wallTime() << " μs" << std::endl;
+        thread_signal_timer.stop();
+        signal_times.push_back(thread_signal_timer.wallTime());
+        std::cout << "Signal simulation: " << thread_signal_timer.wallTime() << " μs" << std::endl;
         
         // Solver timing
-        std::cout << "Solver execution (run " << run << ")..." << std::endl;
-        Timings::Chrono run_solver_timer;
-        run_solver_timer.start();
+        std::cout << "Running solver with " << num_threads << " threads..." << std::endl;
+        Timings::Chrono thread_solver_timer;
+        thread_solver_timer.start();
         test_interface->solve();
-        run_solver_timer.stop();
-        solver_times.push_back(run_solver_timer.wallTime());
-        std::cout << "Solver execution: " << run_solver_timer.wallTime() << " μs" << std::endl;
+        thread_solver_timer.stop();
+        solver_times.push_back(thread_solver_timer.wallTime());
+        std::cout << "Solver execution: " << thread_solver_timer.wallTime() << " μs" << std::endl;
         
-        // Keep the last interface for output
-        if (run == num_runs) {
+        // Keep the last interface for output (from the max threads test)
+        if (i == thread_counts.size() - 1) {
             final_interface = test_interface;
         } else {
             delete test_interface;
         }
     }
     
-    // Calculate statistics
-    auto calc_stats = [](const std::vector<double>& times) {
-        double sum = 0.0, min_val = times[0], max_val = times[0];
-        for (double t : times) {
-            sum += t;
-            min_val = std::min(min_val, t);
-            max_val = std::max(max_val, t);
-        }
-        double avg = sum / times.size();
-        double variance = 0.0;
-        for (double t : times) variance += (t - avg) * (t - avg);
-        double stddev = std::sqrt(variance / times.size());
-        return std::make_tuple(avg, min_val, max_val, stddev);
-    };
-    
-    auto [sig_avg, sig_min, sig_max, sig_std] = calc_stats(signal_times);
-    auto [sol_avg, sol_min, sol_max, sol_std] = calc_stats(solver_times);
-    
     // Performance summary
     std::cout << "\n" << std::string(70, '=') << std::endl;
-    std::cout << "EIGEN OPTIMIZATION PERFORMANCE SUMMARY" << std::endl;
+    std::cout << "EIGEN+BLAS/LAPACK PERFORMANCE SUMMARY" << std::endl;
     std::cout << std::string(70, '=') << std::endl;
-    std::cout << std::left << std::setw(15) << "Metric" 
-              << std::setw(18) << "Signal Time (μs)" 
-              << std::setw(18) << "Solver Time (μs)" << std::endl;
+    std::cout << std::left << std::setw(10) << "Threads" 
+              << std::setw(20) << "Signal Time (μs)" 
+              << std::setw(20) << "Solver Time (μs)" 
+              << std::setw(15) << "Speedup (Solver)" << std::endl;
     std::cout << std::string(70, '-') << std::endl;
-    std::cout << std::left << std::setw(15) << "Average"
-              << std::setw(18) << std::fixed << std::setprecision(2) << sig_avg
-              << std::setw(18) << std::fixed << std::setprecision(2) << sol_avg << std::endl;
-    std::cout << std::left << std::setw(15) << "Minimum"
-              << std::setw(18) << std::fixed << std::setprecision(2) << sig_min
-              << std::setw(18) << std::fixed << std::setprecision(2) << sol_min << std::endl;
-    std::cout << std::left << std::setw(15) << "Maximum"
-              << std::setw(18) << std::fixed << std::setprecision(2) << sig_max
-              << std::setw(18) << std::fixed << std::setprecision(2) << sol_max << std::endl;
-    std::cout << std::left << std::setw(15) << "Std Deviation"
-              << std::setw(18) << std::fixed << std::setprecision(2) << sig_std
-              << std::setw(18) << std::fixed << std::setprecision(2) << sol_std << std::endl;
     
-    std::cout << "\nIndividual Run Results:" << std::endl;
-    std::cout << std::left << std::setw(8) << "Run" 
-              << std::setw(18) << "Signal Time (μs)" 
-              << std::setw(18) << "Solver Time (μs)" << std::endl;
-    std::cout << std::string(50, '-') << std::endl;
-    for (int i = 0; i < num_runs; ++i) {
-        std::cout << std::left << std::setw(8) << (i + 1)
-                  << std::setw(18) << std::fixed << std::setprecision(2) << signal_times[i]
-                  << std::setw(18) << std::fixed << std::setprecision(2) << solver_times[i] << std::endl;
+    for (size_t i = 0; i < thread_counts.size(); ++i) {
+        double speedup = solver_times[0] / solver_times[i]; // Speedup relative to single thread
+        std::cout << std::left << std::setw(10) << thread_counts[i]
+                  << std::setw(20) << std::fixed << std::setprecision(2) << signal_times[i]
+                  << std::setw(20) << std::fixed << std::setprecision(2) << solver_times[i]
+                  << std::setw(15) << std::fixed << std::setprecision(2) << speedup << "x" << std::endl;
     }
     
     // Write performance results to file
-    std::string perf_file = output_dir + "/eigen_performance_results.txt";
+    std::string perf_file = output_dir + "/eigen_blas_performance_results.txt";
     std::ofstream perf_out(perf_file);
-    perf_out << "Eigen Optimization Performance Test Results\n";
-    perf_out << "==========================================\n\n";
+    perf_out << "Eigen+BLAS/LAPACK Performance Test Results\n";
+    perf_out << "=========================================\n\n";
     perf_out << "Test Configuration:\n";
-    perf_out << "- Optimization: Eigen automatic parallelization\n";
+    perf_out << "- Optimization: Eigen automatic parallelization with BLAS/LAPACK\n";
     perf_out << "- OpenMP: Disabled\n";
-    perf_out << "- BLAS/LAPACK: " << (true ? "Enabled" : "Disabled") << "\n"; // Will be filled by CMake
-    perf_out << "- Number of runs: " << num_runs << "\n\n";
+    perf_out << "- BLAS/LAPACK: Enabled (reference implementation)\n";
+    perf_out << "- Thread counts tested: 1, 2, 4, 6, 8, 12\n\n";
     
-    perf_out << "Summary Statistics:\n";
-    perf_out << std::left << std::setw(15) << "Metric" 
-             << std::setw(18) << "Signal_Time_μs" 
-             << std::setw(18) << "Solver_Time_μs" << "\n";
-    perf_out << std::left << std::setw(15) << "Average"
-             << std::setw(18) << sig_avg
-             << std::setw(18) << sol_avg << "\n";
-    perf_out << std::left << std::setw(15) << "Minimum"
-             << std::setw(18) << sig_min
-             << std::setw(18) << sol_min << "\n";
-    perf_out << std::left << std::setw(15) << "Maximum"
-             << std::setw(18) << sig_max
-             << std::setw(18) << sol_max << "\n";
-    perf_out << std::left << std::setw(15) << "Std_Deviation"
-             << std::setw(18) << sig_std
-             << std::setw(18) << sol_std << "\n\n";
-    
-    perf_out << "Individual Results:\n";
-    perf_out << std::left << std::setw(8) << "Run" 
-             << std::setw(18) << "Signal_Time_μs" 
-             << std::setw(18) << "Solver_Time_μs" << "\n";
-    for (int i = 0; i < num_runs; ++i) {
-        perf_out << std::left << std::setw(8) << (i + 1)
-                 << std::setw(18) << signal_times[i]
-                 << std::setw(18) << solver_times[i] << "\n";
+    perf_out << std::left << std::setw(10) << "Threads" 
+             << std::setw(20) << "Signal_Time_μs" 
+             << std::setw(20) << "Solver_Time_μs" 
+             << std::setw(15) << "Speedup" << "\n";
+    for (size_t i = 0; i < thread_counts.size(); ++i) {
+        double speedup = solver_times[0] / solver_times[i];
+        perf_out << std::left << std::setw(10) << thread_counts[i]
+                 << std::setw(20) << signal_times[i]
+                 << std::setw(20) << solver_times[i]
+                 << std::setw(15) << speedup << "\n";
     }
     perf_out.close();
     
@@ -303,7 +261,7 @@ int main(int argc, char* argv[]) {
     // Clean up
     delete final_interface;
     
-    std::cout << "\nEigen optimization performance test completed successfully!" << std::endl;
+    std::cout << "\nEigen+BLAS/LAPACK multi-threading performance test completed successfully!" << std::endl;
     std::cout << "Results saved to: " << perf_file << std::endl;
 
     return 0;

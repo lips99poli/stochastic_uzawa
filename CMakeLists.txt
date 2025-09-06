@@ -52,7 +52,10 @@ else()
     message(STATUS "OpenMP not found - using Eigen optimization")
 endif()
 
-# Enable Eigen's automatic parallelization and optimizations
+# Find threading support for BLAS libraries
+find_package(Threads REQUIRED)
+
+# Enable Eigen's automatic parallelization and optimizations with BLAS/LAPACK
 add_compile_definitions(EIGEN_USE_BLAS)
 add_compile_definitions(EIGEN_USE_LAPACKE)
 # Remove EIGEN_DONT_PARALLELIZE to enable Eigen threading
@@ -100,13 +103,16 @@ if(BUILD_BINDINGS)
         Eigen3::Eigen
     )
     
-    # Add BLAS/LAPACK if available for maximum performance
-    find_package(BLAS QUIET)
-    find_package(LAPACK QUIET)
-    if(BLAS_FOUND AND LAPACK_FOUND)
-        target_link_libraries(stochastic_uzawa PRIVATE ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
-        message(STATUS "Linked with BLAS/LAPACK for optimal Eigen performance")
-    endif()
+    # Link with BLAS/LAPACK using reference implementation
+    target_link_libraries(stochastic_uzawa PRIVATE 
+        /usr/lib/x86_64-linux-gnu/liblapacke.a
+        /usr/lib/x86_64-linux-gnu/liblapack.a
+        /usr/lib/x86_64-linux-gnu/libblas.a
+        gfortran
+        Threads::Threads
+        m
+    )
+    message(STATUS "Linked with reference BLAS/LAPACK (static) for optimal Eigen performance")
     
     # Install the Python module
     install(TARGETS stochastic_uzawa DESTINATION .)
@@ -122,13 +128,17 @@ else()
     add_executable(test_cpp ${ALL_SOURCES})
     target_link_libraries(test_cpp Eigen3::Eigen)
     
-    # Add BLAS/LAPACK if available for maximum performance
-    find_package(BLAS QUIET)
-    find_package(LAPACK QUIET)
-    if(BLAS_FOUND AND LAPACK_FOUND)
-        target_link_libraries(test_cpp ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
-        message(STATUS "Linked with BLAS/LAPACK for optimal Eigen performance")
-    endif()
+    # Link with BLAS/LAPACK using reference implementation (no threading issues)
+    # Use proper linking order: LAPACKE -> LAPACK -> BLAS -> gfortran
+    target_link_libraries(test_cpp 
+        /usr/lib/x86_64-linux-gnu/liblapacke.a   # C interface to LAPACK
+        /usr/lib/x86_64-linux-gnu/liblapack.a    # LAPACK routines (depends on BLAS)
+        /usr/lib/x86_64-linux-gnu/libblas.a      # Basic Linear Algebra Subprograms
+        gfortran                                  # Fortran runtime for BLAS/LAPACK
+        Threads::Threads                          # Threading support
+        m                                         # Math library
+    )
+    message(STATUS "Linked with reference BLAS/LAPACK (static) for optimal Eigen performance")
     
     # Link filesystem library for std::filesystem (needed in C++17)
     target_link_libraries(test_cpp stdc++fs)
