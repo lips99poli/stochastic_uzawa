@@ -1,4 +1,5 @@
 #include "Interface.hpp"
+#include "chrono.hpp"
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -150,14 +151,20 @@ int main(int argc, char* argv[]) {
     
     // Simulate signal (price)
     std::cout << "Simulating signal..." << std::endl;
+    Timings::Chrono signal_timer;
+    signal_timer.start();
     Eigen::MatrixXd price_matrix = interface.simulate_price();
-    std::cout << "Signal simulation completed. Generated price matrix of size: " 
+    signal_timer.stop();
+    std::cout << "Signal simulation completed in: " << signal_timer.wallTime() << " microseconds. Generated price matrix of size: " 
                 << price_matrix.rows() << " x " << price_matrix.cols() << std::endl;
     
     // Solve the optimization problem
     std::cout << "Starting solver..." << std::endl;
+    Timings::Chrono solver_timer;
+    solver_timer.start();
     interface.solve();
-    std::cout << "Solver completed successfully." << std::endl;
+    solver_timer.stop();
+    std::cout << "Solver completed successfully in: " << solver_timer.wallTime() << " microseconds." << std::endl;
     
     // Write all matrices to variables file
     std::cout << "Writing variables to output..." << std::endl;
