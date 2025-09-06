@@ -126,7 +126,7 @@ int main(int argc, char* argv[]) {
     
     // Get the project root directory (3 levels up from build directory)
     std::filesystem::path current_path = std::filesystem::current_path();
-    std::filesystem::path project_root = current_path.parent_path().parent_path().parent_path();
+    std::filesystem::path project_root = current_path;
     
     // Create full output path
     std::string output_dir = project_root / "outputs" / "cpp" / output_folder_name;
@@ -179,7 +179,7 @@ int main(int argc, char* argv[]) {
         std::cout << "\n--- Testing with " << num_threads << " thread(s) ---" << std::endl;
         
         // Set Eigen thread count
-        Eigen::setNbThreads(num_threads);
+        //Eigen::setNbThreads(num_threads);
         std::cout << "Eigen threads set to: " << Eigen::nbThreads() << std::endl;
         
         // Create a fresh interface for this test

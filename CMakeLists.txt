@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(StochasticUzawa CXX)
+project(StochasticUzawa LANGUAGES CXX)
 
 # Option to build Python bindings
 option(BUILD_BINDINGS "Build Python bindings" OFF)
@@ -21,55 +21,56 @@ endif()
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/tests/cpp/build)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
-# Find required packages
-find_package(Eigen3 QUIET)
+# --- Eigen ---
+find_package(Eigen3 QUIET NO_MODULE)
 if(NOT Eigen3_FOUND)
-    # Try to find Eigen3 in common locations
-    find_path(EIGEN3_INCLUDE_DIR 
-        NAMES Eigen/Dense
-        PATHS 
-            /u/sw/toolchains/gcc-glibc/11.2.0/pkgs/eigen/3.3.9/include/eigen3
-            /usr/include/eigen3
-            /usr/local/include/eigen3
-            /opt/homebrew/include/eigen3
-            /usr/include
-            /usr/local/include
-    )
-    
-    if(EIGEN3_INCLUDE_DIR)
-        message(STATUS "Found Eigen3 at: ${EIGEN3_INCLUDE_DIR}")
-        add_library(Eigen3::Eigen INTERFACE IMPORTED)
-        target_include_directories(Eigen3::Eigen INTERFACE ${EIGEN3_INCLUDE_DIR})
-    else()
-        message(FATAL_ERROR "Eigen3 not found. Please install libeigen3-dev package.")
-    endif()
+  find_path(EIGEN3_INCLUDE_DIR
+    NAMES Eigen/Dense
+    PATHS
+      /u/sw/toolchains/gcc-glibc/11.2.0/pkgs/eigen/3.3.9/include/eigen3
+      /usr/include/eigen3 /usr/local/include/eigen3
+      /opt/homebrew/include/eigen3
+      /usr/include /usr/local/include
+  )
+  if(NOT EIGEN3_INCLUDE_DIR)
+    message(FATAL_ERROR "Eigen3 not found")
+  endif()
+  message(STATUS "Found Eigen3 at: ${EIGEN3_INCLUDE_DIR}")
+  add_library(Eigen3::Eigen INTERFACE IMPORTED)
+  target_include_directories(Eigen3::Eigen INTERFACE ${EIGEN3_INCLUDE_DIR})
 endif()
 
-find_package(OpenMP QUIET)  # Optional now
-if(OpenMP_FOUND)
-    message(STATUS "OpenMP found but NOT using it - Eigen optimization enabled")
-else()
-    message(STATUS "OpenMP not found - using Eigen optimization")
+# --- Your custom BLAS/LAPACK (toolchain-built) ---
+set(OPENBLAS_LIB "$ENV{HOME}/local/openblas-tc/lib/libopenblas.so")
+if(NOT EXISTS "${OPENBLAS_LIB}")
+  message(WARNING "OpenBLAS not found at ${OPENBLAS_LIB}, trying system BLAS")
+  # Fallback to system BLAS if custom build not available
+  find_package(BLAS)
+  if(NOT BLAS_FOUND)
+    message(FATAL_ERROR "No BLAS library found")
+  endif()
 endif()
 
-# Find threading support for BLAS libraries
-find_package(Threads REQUIRED)
+set(LAPACKE_INC "$ENV{HOME}/local/lapack-tc/include")
+set(LAPACKE_LIB "$ENV{HOME}/local/lapack-tc/lib/liblapacke.a")
+if(NOT EXISTS "${LAPACKE_LIB}")
+  message(WARNING "Custom LAPACKE not found at ${LAPACKE_LIB}, trying system LAPACK")
+  find_package(LAPACK)
+  if(NOT LAPACK_FOUND)
+    message(FATAL_ERROR "No LAPACK library found")
+  endif()
+endif()
 
-# Enable Eigen's automatic parallelization and optimizations with BLAS/LAPACK
-add_compile_definitions(EIGEN_USE_BLAS)
-add_compile_definitions(EIGEN_USE_LAPACKE)
-# Remove EIGEN_DONT_PARALLELIZE to enable Eigen threading
-# Remove EIGEN_NO_AUTOMATIC_RESIZING to allow Eigen optimizations
-
-# Include directories
+# --- Project includes & sources ---
 include_directories(${CMAKE_SOURCE_DIR}/include)
+file(GLOB_RECURSE LIB_SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp")
 
-# All source files (library sources + test source)
-file(GLOB_RECURSE ALL_SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp")
+# --- Threading ---
+find_package(Threads REQUIRED)
 
 if(BUILD_BINDINGS)
     # Build Python bindings
-    message(STATUS "Building with Python bindings")
+    message(STATUS "Building with Python bindings and Eigen+BLAS/LAPACK optimization")
     
     # Find Python and pybind11
     find_package(Python COMPONENTS Interpreter Development REQUIRED)
@@ -94,52 +95,108 @@ if(BUILD_BINDINGS)
     
     # Create Python module
     pybind11_add_module(stochastic_uzawa 
-        ${ALL_SOURCES}
+        ${LIB_SOURCES}
         ${CMAKE_SOURCE_DIR}/bindings/python_bindings.cpp
     )
     
-    # Link libraries to the Python module
-    target_link_libraries(stochastic_uzawa PRIVATE 
-        Eigen3::Eigen
+    # Enable Eigen BLAS/LAPACK hooks for Python module
+    target_compile_definitions(stochastic_uzawa PRIVATE
+        EIGEN_USE_BLAS
+        EIGEN_USE_LAPACKE
+        EIGEN_NO_DEBUG
+        NDEBUG
+        VERSION_INFO=${PROJECT_VERSION}
     )
     
-    # Link with BLAS/LAPACK using reference implementation
-    target_link_libraries(stochastic_uzawa PRIVATE 
-        /usr/lib/x86_64-linux-gnu/liblapacke.a
-        /usr/lib/x86_64-linux-gnu/liblapack.a
-        /usr/lib/x86_64-linux-gnu/libblas.a
-        gfortran
-        Threads::Threads
-        m
-    )
-    message(STATUS "Linked with reference BLAS/LAPACK (static) for optimal Eigen performance")
+    # Optimization flags for Python module
+    target_compile_options(stochastic_uzawa PRIVATE -O3 -march=native -mtune=native)
+    
+    # Include custom LAPACKE headers if available
+    if(EXISTS "${LAPACKE_INC}")
+        target_include_directories(stochastic_uzawa PRIVATE ${LAPACKE_INC})
+    endif()
+    
+    # Link libraries to the Python module
+    target_link_libraries(stochastic_uzawa PRIVATE Eigen3::Eigen)
+    
+    # Link custom BLAS/LAPACK if available, otherwise system libraries
+    if(EXISTS "${LAPACKE_LIB}" AND EXISTS "${OPENBLAS_LIB}")
+        message(STATUS "Using custom BLAS/LAPACK libraries for Python module")
+        target_link_libraries(stochastic_uzawa PRIVATE
+            ${LAPACKE_LIB}
+            ${OPENBLAS_LIB}
+            Threads::Threads
+            m dl
+        )
+        # Set RPATH for custom OpenBLAS
+        set_target_properties(stochastic_uzawa PROPERTIES
+            BUILD_RPATH "$ENV{HOME}/local/openblas-tc/lib"
+            INSTALL_RPATH "$ENV{HOME}/local/openblas-tc/lib"
+        )
+    else()
+        message(STATUS "Using system BLAS/LAPACK libraries for Python module")
+        if(BLAS_FOUND AND LAPACK_FOUND)
+            target_link_libraries(stochastic_uzawa PRIVATE 
+                ${LAPACK_LIBRARIES} 
+                ${BLAS_LIBRARIES}
+                Threads::Threads
+            )
+        endif()
+    endif()
     
     # Install the Python module
     install(TARGETS stochastic_uzawa DESTINATION .)
     
-    # Set properties for the Python module
-    target_compile_definitions(stochastic_uzawa PRIVATE VERSION_INFO=${PROJECT_VERSION})
-    
 else()
     # Build test executable
-    message(STATUS "Building test executable only")
-    list(APPEND ALL_SOURCES "${CMAKE_SOURCE_DIR}/tests/cpp/test_cpp.cpp")
+    message(STATUS "Building C++ test executable with Eigen+BLAS/LAPACK optimization")
     
-    add_executable(test_cpp ${ALL_SOURCES})
-    target_link_libraries(test_cpp Eigen3::Eigen)
+    set(TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/cpp/test_cpp.cpp")
+    add_executable(test_cpp ${LIB_SOURCES} ${TEST_MAIN})
     
-    # Link with BLAS/LAPACK using reference implementation (no threading issues)
-    # Use proper linking order: LAPACKE -> LAPACK -> BLAS -> gfortran
-    target_link_libraries(test_cpp 
-        /usr/lib/x86_64-linux-gnu/liblapacke.a   # C interface to LAPACK
-        /usr/lib/x86_64-linux-gnu/liblapack.a    # LAPACK routines (depends on BLAS)
-        /usr/lib/x86_64-linux-gnu/libblas.a      # Basic Linear Algebra Subprograms
-        gfortran                                  # Fortran runtime for BLAS/LAPACK
-        Threads::Threads                          # Threading support
-        m                                         # Math library
+    target_link_libraries(test_cpp PRIVATE Eigen3::Eigen)
+    
+    # Enable Eigen BLAS/LAPACK hooks for test executable
+    target_compile_definitions(test_cpp PRIVATE
+        EIGEN_USE_BLAS
+        EIGEN_USE_LAPACKE
+        EIGEN_NO_DEBUG
+        NDEBUG
     )
-    message(STATUS "Linked with reference BLAS/LAPACK (static) for optimal Eigen performance")
     
-    # Link filesystem library for std::filesystem (needed in C++17)
-    target_link_libraries(test_cpp stdc++fs)
+    # Optimization flags for test executable
+    target_compile_options(test_cpp PRIVATE -O3 -march=native -mtune=native)
+    
+    # Include custom LAPACKE headers if available
+    if(EXISTS "${LAPACKE_INC}")
+        target_include_directories(test_cpp PRIVATE ${LAPACKE_INC})
+    endif()
+    
+    # Link custom BLAS/LAPACK if available, otherwise system libraries
+    if(EXISTS "${LAPACKE_LIB}" AND EXISTS "${OPENBLAS_LIB}")
+        message(STATUS "Using custom BLAS/LAPACK libraries for test executable")
+        target_link_libraries(test_cpp PRIVATE
+            ${LAPACKE_LIB}
+            ${OPENBLAS_LIB}
+            Threads::Threads
+            m dl
+        )
+        # Set RPATH for custom OpenBLAS
+        set_target_properties(test_cpp PROPERTIES
+            BUILD_RPATH "$ENV{HOME}/local/openblas-tc/lib"
+            INSTALL_RPATH "$ENV{HOME}/local/openblas-tc/lib"
+        )
+    else()
+        message(STATUS "Using system BLAS/LAPACK libraries for test executable")
+        if(BLAS_FOUND AND LAPACK_FOUND)
+            target_link_libraries(test_cpp PRIVATE 
+                ${LAPACK_LIBRARIES} 
+                ${BLAS_LIBRARIES}
+                Threads::Threads
+            )
+        endif()
+        # Link filesystem library for std::filesystem (needed in C++17)
+        target_link_libraries(test_cpp stdc++fs)
+    endif()
+    
 endif()
