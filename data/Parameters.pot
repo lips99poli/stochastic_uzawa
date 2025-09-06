@@ -1,8 +1,8 @@
 # Numeric Scheme Parameters
 T = 1.0
-N = 20
+N = 300
 D = 50
-M = 4
+M = 500
 epsilon = 0.001
 delta = 1.0
 beta = 0.9
