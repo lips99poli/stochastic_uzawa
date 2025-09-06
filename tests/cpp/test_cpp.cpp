@@ -6,6 +6,8 @@
 #include <vector>
 #include <filesystem>
 #include <cstring>
+#include <omp.h>
+#include <iomanip>
 
 void print_errors(const std::vector<ParamError>& errors) {
     std::cerr << "Parameter validation errors:\n";
@@ -146,10 +148,10 @@ int main(int argc, char* argv[]) {
     
     std::cout << "Parameters validated successfully." << std::endl;
     
-    // Write parameters to output directory
+    // Write parameters to output directory (done once)
     write_parameters_to_file(output_dir, input_file);
     
-    // Simulate signal (price)
+    // Simulate signal (price) - done once since it's the same for all thread tests
     std::cout << "Simulating signal..." << std::endl;
     Timings::Chrono signal_timer;
     signal_timer.start();
@@ -158,19 +160,99 @@ int main(int argc, char* argv[]) {
     std::cout << "Signal simulation completed in: " << signal_timer.wallTime() << " microseconds. Generated price matrix of size: " 
                 << price_matrix.rows() << " x " << price_matrix.cols() << std::endl;
     
-    // Solve the optimization problem
-    std::cout << "Starting solver..." << std::endl;
-    Timings::Chrono solver_timer;
-    solver_timer.start();
-    interface.solve();
-    solver_timer.stop();
-    std::cout << "Solver completed successfully in: " << solver_timer.wallTime() << " microseconds." << std::endl;
+    // Thread count tests - Test with different number of threads
+    std::vector<int> thread_counts = {1, 2, 4, 6, 8, 12}; // Progressive thread counts up to 12 cores
+    std::vector<double> solver_times;
+    std::vector<double> signal_times; // For each thread count (signal is regenerated)
+    Interface* final_interface = nullptr; // Pointer to the final interface for output
     
-    // Write all matrices to variables file
-    std::cout << "Writing variables to output..." << std::endl;
-    write_matrices_to_file(output_dir, interface);
+    std::cout << "\n" << std::string(70, '=') << std::endl;
+    std::cout << "PERFORMANCE TESTING WITH DIFFERENT THREAD COUNTS" << std::endl;
+    std::cout << std::string(70, '=') << std::endl;
     
-    std::cout << "Test completed successfully!" << std::endl;
+    for (size_t i = 0; i < thread_counts.size(); ++i) {
+        int num_threads = thread_counts[i];
+        std::cout << "\n--- Testing with " << num_threads << " thread(s) ---" << std::endl;
+        
+        // Set the number of OpenMP threads
+        omp_set_num_threads(num_threads);
+        std::cout << "OpenMP threads set to: " << omp_get_max_threads() << std::endl;
+        
+        // Create a fresh interface for this test (to reset internal state)
+        Interface* thread_interface = new Interface();
+        thread_interface->read_par(input_file); // Reload parameters
+        
+        // Re-simulate signal with this thread count
+        std::cout << "Re-simulating signal with " << num_threads << " threads..." << std::endl;
+        Timings::Chrono thread_signal_timer;
+        thread_signal_timer.start();
+        thread_interface->simulate_price();
+        thread_signal_timer.stop();
+        signal_times.push_back(thread_signal_timer.wallTime());
+        std::cout << "Signal simulation: " << thread_signal_timer.wallTime() << " μs" << std::endl;
+        
+        // Solve the optimization problem with current thread count
+        std::cout << "Running solver with " << num_threads << " threads..." << std::endl;
+        Timings::Chrono thread_solver_timer;
+        thread_solver_timer.start();
+        thread_interface->solve();
+        thread_solver_timer.stop();
+        solver_times.push_back(thread_solver_timer.wallTime());
+        std::cout << "Solver execution: " << thread_solver_timer.wallTime() << " μs" << std::endl;
+        
+        // Keep the last interface for final output (from the max threads test)
+        if (i == thread_counts.size() - 1) {
+            final_interface = thread_interface;
+        } else {
+            delete thread_interface; // Clean up intermediate interfaces
+        }
+    }
+    
+    // Performance summary
+    std::cout << "\n" << std::string(70, '=') << std::endl;
+    std::cout << "PERFORMANCE SUMMARY" << std::endl;
+    std::cout << std::string(70, '=') << std::endl;
+    std::cout << std::left << std::setw(10) << "Threads" 
+              << std::setw(20) << "Signal Time (μs)" 
+              << std::setw(20) << "Solver Time (μs)" 
+              << std::setw(15) << "Speedup (Solver)" << std::endl;
+    std::cout << std::string(70, '-') << std::endl;
+    
+    for (size_t i = 0; i < thread_counts.size(); ++i) {
+        double speedup = solver_times[0] / solver_times[i]; // Speedup relative to single thread
+        std::cout << std::left << std::setw(10) << thread_counts[i]
+                  << std::setw(20) << std::fixed << std::setprecision(2) << signal_times[i]
+                  << std::setw(20) << std::fixed << std::setprecision(2) << solver_times[i]
+                  << std::setw(15) << std::fixed << std::setprecision(2) << speedup << "x" << std::endl;
+    }
+    
+    // Write performance results to file
+    std::string perf_file = output_dir + "/performance_results.txt";
+    std::ofstream perf_out(perf_file);
+    perf_out << "Performance Test Results\n";
+    perf_out << "========================\n\n";
+    perf_out << std::left << std::setw(10) << "Threads" 
+             << std::setw(20) << "Signal_Time_μs" 
+             << std::setw(20) << "Solver_Time_μs" 
+             << std::setw(15) << "Speedup" << "\n";
+    for (size_t i = 0; i < thread_counts.size(); ++i) {
+        double speedup = solver_times[0] / solver_times[i];
+        perf_out << std::left << std::setw(10) << thread_counts[i]
+                 << std::setw(20) << signal_times[i]
+                 << std::setw(20) << solver_times[i]
+                 << std::setw(15) << speedup << "\n";
+    }
+    perf_out.close();
+    
+    // Write all matrices to variables file (done once with final result)
+    std::cout << "\nWriting variables to output..." << std::endl;
+    write_matrices_to_file(output_dir, *final_interface);
+    
+    // Clean up
+    delete final_interface;
+    
+    std::cout << "\nMulti-threading performance test completed successfully!" << std::endl;
+    std::cout << "Results saved to: " << perf_file << std::endl;
 
     return 0;
 }
