@@ -47,6 +47,12 @@ endif()
 
 find_package(OpenMP REQUIRED)
 
+# Disable Eigen's automatic parallelization since we use OpenMP manually
+add_compile_definitions(EIGEN_DONT_PARALLELIZE)
+
+# Additional Eigen optimizations for better performance with OpenMP
+add_compile_definitions(EIGEN_NO_AUTOMATIC_RESIZING)
+
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
