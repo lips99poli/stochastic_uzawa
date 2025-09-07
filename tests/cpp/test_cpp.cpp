@@ -8,6 +8,7 @@
 #include <cstring>
 #include <omp.h>
 #include <iomanip>
+#include <cmath>
 
 void print_errors(const std::vector<ParamError>& errors) {
     std::cerr << "Parameter validation errors:\n";
@@ -160,87 +161,152 @@ int main(int argc, char* argv[]) {
     std::cout << "Signal simulation completed in: " << signal_timer.wallTime() << " microseconds. Generated price matrix of size: " 
                 << price_matrix.rows() << " x " << price_matrix.cols() << std::endl;
     
-    // Thread count tests - Test with different number of threads
+    // Thread count tests - Test with different number of threads (3 runs each for consistency)
     std::vector<int> thread_counts = {1, 2, 4, 6, 8, 12}; // Progressive thread counts up to 12 cores
-    std::vector<double> solver_times;
-    std::vector<double> signal_times; // For each thread count (signal is regenerated)
+    const int num_runs_per_config = 3; // Number of runs per thread configuration for averaging
+    std::vector<std::vector<double>> solver_times_all(thread_counts.size());
+    std::vector<std::vector<double>> signal_times_all(thread_counts.size());
+    std::vector<double> solver_times_avg(thread_counts.size());
+    std::vector<double> signal_times_avg(thread_counts.size());
     Interface* final_interface = nullptr; // Pointer to the final interface for output
     
     std::cout << "\n" << std::string(70, '=') << std::endl;
-    std::cout << "PERFORMANCE TESTING WITH DIFFERENT THREAD COUNTS" << std::endl;
+    std::cout << "OPENMP PERFORMANCE TESTING WITH DIFFERENT THREAD COUNTS" << std::endl;
+    std::cout << "Running " << num_runs_per_config << " iterations per thread configuration for consistency" << std::endl;
     std::cout << std::string(70, '=') << std::endl;
     
     for (size_t i = 0; i < thread_counts.size(); ++i) {
         int num_threads = thread_counts[i];
-        std::cout << "\n--- Testing with " << num_threads << " thread(s) ---" << std::endl;
+        std::cout << "\n--- Testing with " << num_threads << " thread(s) (" << num_runs_per_config << " runs) ---" << std::endl;
         
         // Set the number of OpenMP threads
         omp_set_num_threads(num_threads);
         std::cout << "OpenMP threads set to: " << omp_get_max_threads() << std::endl;
         
-        // Create a fresh interface for this test (to reset internal state)
-        Interface* thread_interface = new Interface();
-        thread_interface->read_par(input_file); // Reload parameters
+        // Initialize vectors for this thread configuration
+        solver_times_all[i].resize(num_runs_per_config);
+        signal_times_all[i].resize(num_runs_per_config);
         
-        // Re-simulate signal with this thread count
-        std::cout << "Re-simulating signal with " << num_threads << " threads..." << std::endl;
-        Timings::Chrono thread_signal_timer;
-        thread_signal_timer.start();
-        thread_interface->simulate_price();
-        thread_signal_timer.stop();
-        signal_times.push_back(thread_signal_timer.wallTime());
-        std::cout << "Signal simulation: " << thread_signal_timer.wallTime() << " μs" << std::endl;
-        
-        // Solve the optimization problem with current thread count
-        std::cout << "Running solver with " << num_threads << " threads..." << std::endl;
-        Timings::Chrono thread_solver_timer;
-        thread_solver_timer.start();
-        thread_interface->solve();
-        thread_solver_timer.stop();
-        solver_times.push_back(thread_solver_timer.wallTime());
-        std::cout << "Solver execution: " << thread_solver_timer.wallTime() << " μs" << std::endl;
-        
-        // Keep the last interface for final output (from the max threads test)
-        if (i == thread_counts.size() - 1) {
-            final_interface = thread_interface;
-        } else {
-            delete thread_interface; // Clean up intermediate interfaces
+        // Run multiple iterations for this thread count
+        for (int run = 0; run < num_runs_per_config; ++run) {
+            std::cout << "  Run " << (run + 1) << "/" << num_runs_per_config << ":" << std::endl;
+            
+            // Create a fresh interface for this test (to reset internal state)
+            Interface* thread_interface = new Interface();
+            thread_interface->read_par(input_file); // Reload parameters
+            
+            // Re-simulate signal with this thread count
+            std::cout << "    Simulating signal..." << std::endl;
+            Timings::Chrono thread_signal_timer;
+            thread_signal_timer.start();
+            thread_interface->simulate_price();
+            thread_signal_timer.stop();
+            signal_times_all[i][run] = thread_signal_timer.wallTime();
+            std::cout << "    Signal simulation: " << thread_signal_timer.wallTime() << " μs" << std::endl;
+            
+            // Solve the optimization problem with current thread count
+            std::cout << "    Running solver..." << std::endl;
+            Timings::Chrono thread_solver_timer;
+            thread_solver_timer.start();
+            thread_interface->solve();
+            thread_solver_timer.stop();
+            solver_times_all[i][run] = thread_solver_timer.wallTime();
+            std::cout << "    Solver execution: " << thread_solver_timer.wallTime() << " μs" << std::endl;
+            
+            // Keep the last interface for final output (from the last run of max threads)
+            if (i == thread_counts.size() - 1 && run == num_runs_per_config - 1) {
+                final_interface = thread_interface;
+            } else {
+                delete thread_interface; // Clean up intermediate interfaces
+            }
         }
+        
+        // Calculate averages for this thread configuration
+        double signal_sum = 0, solver_sum = 0;
+        for (int run = 0; run < num_runs_per_config; ++run) {
+            signal_sum += signal_times_all[i][run];
+            solver_sum += solver_times_all[i][run];
+        }
+        signal_times_avg[i] = signal_sum / num_runs_per_config;
+        solver_times_avg[i] = solver_sum / num_runs_per_config;
+        
+        std::cout << "  Average for " << num_threads << " threads: Signal=" 
+                  << std::fixed << std::setprecision(0) << signal_times_avg[i] 
+                  << " μs, Solver=" << solver_times_avg[i] << " μs" << std::endl;
     }
     
     // Performance summary
     std::cout << "\n" << std::string(70, '=') << std::endl;
-    std::cout << "PERFORMANCE SUMMARY" << std::endl;
+    std::cout << "OPENMP PERFORMANCE SUMMARY (AVERAGES OF " << num_runs_per_config << " RUNS)" << std::endl;
     std::cout << std::string(70, '=') << std::endl;
     std::cout << std::left << std::setw(10) << "Threads" 
-              << std::setw(20) << "Signal Time (μs)" 
-              << std::setw(20) << "Solver Time (μs)" 
-              << std::setw(15) << "Speedup (Solver)" << std::endl;
+              << std::setw(18) << "Avg Signal (μs)" 
+              << std::setw(18) << "Avg Solver (μs)" 
+              << std::setw(15) << "Speedup" 
+              << std::setw(10) << "Std Dev" << std::endl;
     std::cout << std::string(70, '-') << std::endl;
     
     for (size_t i = 0; i < thread_counts.size(); ++i) {
-        double speedup = solver_times[0] / solver_times[i]; // Speedup relative to single thread
+        double speedup = solver_times_avg[0] / solver_times_avg[i]; // Speedup relative to single thread
+        
+        // Calculate standard deviation for solver times
+        double solver_variance = 0;
+        for (int run = 0; run < num_runs_per_config; ++run) {
+            double diff = solver_times_all[i][run] - solver_times_avg[i];
+            solver_variance += diff * diff;
+        }
+        double solver_std_dev_pct = sqrt(solver_variance / num_runs_per_config) / solver_times_avg[i] * 100;
+        
         std::cout << std::left << std::setw(10) << thread_counts[i]
-                  << std::setw(20) << std::fixed << std::setprecision(2) << signal_times[i]
-                  << std::setw(20) << std::fixed << std::setprecision(2) << solver_times[i]
-                  << std::setw(15) << std::fixed << std::setprecision(2) << speedup << "x" << std::endl;
+                  << std::setw(18) << std::fixed << std::setprecision(0) << signal_times_avg[i]
+                  << std::setw(18) << std::fixed << std::setprecision(0) << solver_times_avg[i]
+                  << std::setw(15) << std::fixed << std::setprecision(2) << speedup << "x"
+                  << std::setw(10) << std::fixed << std::setprecision(1) << solver_std_dev_pct << "%" << std::endl;
     }
     
     // Write performance results to file
-    std::string perf_file = output_dir + "/performance_results.txt";
+    std::string perf_file = output_dir + "/openmp_performance_results.txt";
     std::ofstream perf_out(perf_file);
-    perf_out << "Performance Test Results\n";
-    perf_out << "========================\n\n";
+    perf_out << "OpenMP Performance Test Results\n";
+    perf_out << "===============================\n\n";
+    perf_out << "Test Configuration:\n";
+    perf_out << "- Optimization: Manual OpenMP parallelization\n";
+    perf_out << "- Eigen: No automatic parallelization (EIGEN_DONT_PARALLELIZE)\n";
+    perf_out << "- Thread counts tested: 1, 2, 4, 6, 8, 12\n";
+    perf_out << "- Runs per configuration: " << num_runs_per_config << " (for statistical consistency)\n";
+    perf_out << "- Problem size: Price matrix " << price_matrix.rows() << "x" << price_matrix.cols() << "\n\n";
+    
+    perf_out << "Average Performance Results:\n";
     perf_out << std::left << std::setw(10) << "Threads" 
-             << std::setw(20) << "Signal_Time_μs" 
-             << std::setw(20) << "Solver_Time_μs" 
-             << std::setw(15) << "Speedup" << "\n";
+             << std::setw(18) << "Avg_Signal_μs" 
+             << std::setw(18) << "Avg_Solver_μs" 
+             << std::setw(15) << "Speedup" 
+             << std::setw(12) << "StdDev_%" << "\n";
     for (size_t i = 0; i < thread_counts.size(); ++i) {
-        double speedup = solver_times[0] / solver_times[i];
+        double speedup = solver_times_avg[0] / solver_times_avg[i];
+        
+        // Calculate standard deviation for solver times
+        double solver_variance = 0;
+        for (int run = 0; run < num_runs_per_config; ++run) {
+            double diff = solver_times_all[i][run] - solver_times_avg[i];
+            solver_variance += diff * diff;
+        }
+        double solver_std_dev_pct = sqrt(solver_variance / num_runs_per_config) / solver_times_avg[i] * 100;
+        
         perf_out << std::left << std::setw(10) << thread_counts[i]
-                 << std::setw(20) << signal_times[i]
-                 << std::setw(20) << solver_times[i]
-                 << std::setw(15) << speedup << "\n";
+                 << std::setw(18) << signal_times_avg[i]
+                 << std::setw(18) << solver_times_avg[i]
+                 << std::setw(15) << speedup 
+                 << std::setw(12) << solver_std_dev_pct << "\n";
+    }
+    
+    perf_out << "\nDetailed Results (all runs):\n";
+    for (size_t i = 0; i < thread_counts.size(); ++i) {
+        perf_out << "\n" << thread_counts[i] << " threads:\n";
+        for (int run = 0; run < num_runs_per_config; ++run) {
+            perf_out << "  Run " << (run+1) << ": Signal=" << signal_times_all[i][run] 
+                     << " μs, Solver=" << solver_times_all[i][run] << " μs\n";
+        }
     }
     perf_out.close();
     
@@ -251,8 +317,7 @@ int main(int argc, char* argv[]) {
     // Clean up
     delete final_interface;
     
-    std::cout << "\nMulti-threading performance test completed successfully!" << std::endl;
-    std::cout << "Results saved to: " << perf_file << std::endl;
+    std::cout << "\nOpenMP multi-threading performance test completed successfully!" << std::endl;
 
     return 0;
 }
