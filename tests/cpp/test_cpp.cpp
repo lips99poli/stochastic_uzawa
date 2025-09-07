@@ -164,80 +164,130 @@ int main(int argc, char* argv[]) {
     std::cout << "Signal simulation completed in: " << signal_timer.wallTime() << " microseconds. Generated price matrix of size: " 
                 << price_matrix.rows() << " x " << price_matrix.cols() << std::endl;
     
-    // Eigen+BLAS/LAPACK performance test with different thread counts
-    std::vector<int> thread_counts = {1, 2, 4, 6, 8, 12}; // Progressive thread counts up to 12 cores
+    // Simple performance test with multiple runs for consistency
+    const int num_runs = 5; // Number of runs for averaging
     std::vector<double> solver_times;
     std::vector<double> signal_times;
     
     std::cout << "\n" << std::string(70, '=') << std::endl;
-    std::cout << "EIGEN+BLAS/LAPACK PERFORMANCE TESTING WITH DIFFERENT THREAD COUNTS" << std::endl;
+    std::cout << "EIGEN+BLAS/LAPACK PERFORMANCE TESTING - MULTIPLE RUNS FOR CONSISTENCY" << std::endl;
+    std::cout << "Running " << num_runs << " iterations to get average performance" << std::endl;
     std::cout << std::string(70, '=') << std::endl;
+    
+    // Check current configuration
+    std::cout << "\nCurrent Configuration:" << std::endl;
+    std::cout << "Eigen using BLAS: " << 
+    #ifdef EIGEN_USE_BLAS
+        "YES"
+    #else
+        "NO"
+    #endif
+        << std::endl;
+    std::cout << "Eigen using LAPACKE: " << 
+    #ifdef EIGEN_USE_LAPACKE
+        "YES"
+    #else
+        "NO"
+    #endif
+        << std::endl;
+    std::cout << "OPENBLAS_NUM_THREADS=" << (getenv("OPENBLAS_NUM_THREADS") ? getenv("OPENBLAS_NUM_THREADS") : "not set") << std::endl;
+    std::cout << "Problem size: Price matrix " << price_matrix.rows() << "x" << price_matrix.cols() << std::endl;
     
     Interface* final_interface = nullptr;
     
-    for (size_t i = 0; i < thread_counts.size(); ++i) {
-        int num_threads = thread_counts[i];
-        std::cout << "\n--- Testing with " << num_threads << " thread(s) ---" << std::endl;
-        
-        // Set Eigen thread count
-        Eigen::setNbThreads(num_threads);
-        
-        // Also set environment variables for BLAS threading
-        std::string num_threads_str = std::to_string(num_threads);
-        setenv("OMP_NUM_THREADS", num_threads_str.c_str(), 1);
-        setenv("OPENBLAS_NUM_THREADS", num_threads_str.c_str(), 1);
-        setenv("MKL_NUM_THREADS", num_threads_str.c_str(), 1);
-        setenv("BLIS_NUM_THREADS", num_threads_str.c_str(), 1);
-        
-        std::cout << "Eigen threads set to: " << Eigen::nbThreads() << std::endl;
-        std::cout << "OPENBLAS_NUM_THREADS=" << (getenv("OPENBLAS_NUM_THREADS") ? getenv("OPENBLAS_NUM_THREADS") : "not set") << std::endl;
+    for (int run = 1; run <= num_runs; ++run) {
+        std::cout << "\n--- Run " << run << "/" << num_runs << " ---" << std::endl;
         
         // Create a fresh interface for this test
         Interface* test_interface = new Interface();
         test_interface->read_par(input_file);
         
         // Signal simulation timing
-        std::cout << "Re-simulating signal with " << num_threads << " threads..." << std::endl;
-        Timings::Chrono thread_signal_timer;
-        thread_signal_timer.start();
+        std::cout << "Simulating signal (run " << run << ")..." << std::endl;
+        Timings::Chrono run_signal_timer;
+        run_signal_timer.start();
         test_interface->simulate_price();
-        thread_signal_timer.stop();
-        signal_times.push_back(thread_signal_timer.wallTime());
-        std::cout << "Signal simulation: " << thread_signal_timer.wallTime() << " μs" << std::endl;
+        run_signal_timer.stop();
+        signal_times.push_back(run_signal_timer.wallTime());
+        std::cout << "Signal simulation: " << run_signal_timer.wallTime() << " μs" << std::endl;
         
         // Solver timing
-        std::cout << "Running solver with " << num_threads << " threads..." << std::endl;
-        Timings::Chrono thread_solver_timer;
-        thread_solver_timer.start();
+        std::cout << "Running solver (run " << run << ")..." << std::endl;
+        Timings::Chrono run_solver_timer;
+        run_solver_timer.start();
         test_interface->solve();
-        thread_solver_timer.stop();
-        solver_times.push_back(thread_solver_timer.wallTime());
-        std::cout << "Solver execution: " << thread_solver_timer.wallTime() << " μs" << std::endl;
+        run_solver_timer.stop();
+        solver_times.push_back(run_solver_timer.wallTime());
+        std::cout << "Solver execution: " << run_solver_timer.wallTime() << " μs" << std::endl;
         
-        // Keep the last interface for output (from the max threads test)
-        if (i == thread_counts.size() - 1) {
+        // Keep the last interface for output
+        if (run == num_runs) {
             final_interface = test_interface;
         } else {
             delete test_interface;
         }
     }
     
+    // Calculate statistics
+    double signal_total = 0, solver_total = 0;
+    double signal_min = signal_times[0], signal_max = signal_times[0];
+    double solver_min = solver_times[0], solver_max = solver_times[0];
+    
+    for (int i = 0; i < num_runs; ++i) {
+        signal_total += signal_times[i];
+        solver_total += solver_times[i];
+        
+        if (signal_times[i] < signal_min) signal_min = signal_times[i];
+        if (signal_times[i] > signal_max) signal_max = signal_times[i];
+        if (solver_times[i] < solver_min) solver_min = solver_times[i];
+        if (solver_times[i] > solver_max) solver_max = solver_times[i];
+    }
+    
+    double signal_avg = signal_total / num_runs;
+    double solver_avg = solver_total / num_runs;
+    
     // Performance summary
     std::cout << "\n" << std::string(70, '=') << std::endl;
     std::cout << "EIGEN+BLAS/LAPACK PERFORMANCE SUMMARY" << std::endl;
     std::cout << std::string(70, '=') << std::endl;
-    std::cout << std::left << std::setw(10) << "Threads" 
-              << std::setw(20) << "Signal Time (μs)" 
-              << std::setw(20) << "Solver Time (μs)" 
-              << std::setw(15) << "Speedup (Solver)" << std::endl;
+    std::cout << std::left << std::setw(15) << "Metric" 
+              << std::setw(15) << "Average (μs)" 
+              << std::setw(15) << "Min (μs)" 
+              << std::setw(15) << "Max (μs)" 
+              << std::setw(15) << "Std Dev (%)" << std::endl;
     std::cout << std::string(70, '-') << std::endl;
     
-    for (size_t i = 0; i < thread_counts.size(); ++i) {
-        double speedup = solver_times[0] / solver_times[i]; // Speedup relative to single thread
-        std::cout << std::left << std::setw(10) << thread_counts[i]
-                  << std::setw(20) << std::fixed << std::setprecision(2) << signal_times[i]
-                  << std::setw(20) << std::fixed << std::setprecision(2) << solver_times[i]
-                  << std::setw(15) << std::fixed << std::setprecision(2) << speedup << "x" << std::endl;
+    // Calculate standard deviation percentages
+    double signal_std_dev = 0, solver_std_dev = 0;
+    for (int i = 0; i < num_runs; ++i) {
+        signal_std_dev += (signal_times[i] - signal_avg) * (signal_times[i] - signal_avg);
+        solver_std_dev += (solver_times[i] - solver_avg) * (solver_times[i] - solver_avg);
+    }
+    signal_std_dev = sqrt(signal_std_dev / num_runs) / signal_avg * 100;
+    solver_std_dev = sqrt(solver_std_dev / num_runs) / solver_avg * 100;
+    
+    std::cout << std::left << std::setw(15) << "Signal"
+              << std::setw(15) << std::fixed << std::setprecision(0) << signal_avg
+              << std::setw(15) << std::fixed << std::setprecision(0) << signal_min
+              << std::setw(15) << std::fixed << std::setprecision(0) << signal_max
+              << std::setw(15) << std::fixed << std::setprecision(1) << signal_std_dev << "%" << std::endl;
+              
+    std::cout << std::left << std::setw(15) << "Solver"
+              << std::setw(15) << std::fixed << std::setprecision(0) << solver_avg
+              << std::setw(15) << std::fixed << std::setprecision(0) << solver_min
+              << std::setw(15) << std::fixed << std::setprecision(0) << solver_max
+              << std::setw(15) << std::fixed << std::setprecision(1) << solver_std_dev << "%" << std::endl;
+    
+    std::cout << "\nIndividual Run Results:" << std::endl;
+    std::cout << std::left << std::setw(10) << "Run" 
+              << std::setw(20) << "Signal Time (μs)" 
+              << std::setw(20) << "Solver Time (μs)" << std::endl;
+    std::cout << std::string(50, '-') << std::endl;
+    
+    for (int i = 0; i < num_runs; ++i) {
+        std::cout << std::left << std::setw(10) << (i+1)
+                  << std::setw(20) << std::fixed << std::setprecision(0) << signal_times[i]
+                  << std::setw(20) << std::fixed << std::setprecision(0) << solver_times[i] << std::endl;
     }
     
     // Write performance results to file
@@ -247,20 +297,39 @@ int main(int argc, char* argv[]) {
     perf_out << "=========================================\n\n";
     perf_out << "Test Configuration:\n";
     perf_out << "- Optimization: Eigen automatic parallelization with BLAS/LAPACK\n";
-    perf_out << "- OpenMP: Disabled\n";
-    perf_out << "- BLAS/LAPACK: Enabled (reference implementation)\n";
-    perf_out << "- Thread counts tested: 1, 2, 4, 6, 8, 12\n\n";
+    perf_out << "- OpenMP: Disabled (using external BLAS threading)\n";
+    perf_out << "- BLAS/LAPACK: Enabled (OpenBLAS " << (getenv("OPENBLAS_NUM_THREADS") ? "threading enabled" : "single-threaded") << ")\n";
+    perf_out << "- Eigen version: 3.3.9\n";
+    perf_out << "- Threading: Controlled via OpenBLAS (OPENBLAS_NUM_THREADS)\n";
+    perf_out << "- Problem size: Price matrix " << price_matrix.rows() << "x" << price_matrix.cols() << "\n";
+    perf_out << "- Number of runs: " << num_runs << " (for statistical consistency)\n";
+    perf_out << "- Note: Eigen::setNbThreads() returns 1 (expected when using external BLAS)\n\n";
     
-    perf_out << std::left << std::setw(10) << "Threads" 
+    perf_out << "Performance Statistics:\n";
+    perf_out << std::left << std::setw(15) << "Metric" 
+             << std::setw(15) << "Average_μs" 
+             << std::setw(15) << "Min_μs" 
+             << std::setw(15) << "Max_μs" 
+             << std::setw(15) << "StdDev_%" << "\n";
+    perf_out << std::left << std::setw(15) << "Signal"
+             << std::setw(15) << signal_avg
+             << std::setw(15) << signal_min
+             << std::setw(15) << signal_max
+             << std::setw(15) << signal_std_dev << "\n";
+    perf_out << std::left << std::setw(15) << "Solver"
+             << std::setw(15) << solver_avg
+             << std::setw(15) << solver_min
+             << std::setw(15) << solver_max
+             << std::setw(15) << solver_std_dev << "\n\n";
+             
+    perf_out << "Individual Run Results:\n";
+    perf_out << std::left << std::setw(10) << "Run" 
              << std::setw(20) << "Signal_Time_μs" 
-             << std::setw(20) << "Solver_Time_μs" 
-             << std::setw(15) << "Speedup" << "\n";
-    for (size_t i = 0; i < thread_counts.size(); ++i) {
-        double speedup = solver_times[0] / solver_times[i];
-        perf_out << std::left << std::setw(10) << thread_counts[i]
+             << std::setw(20) << "Solver_Time_μs" << "\n";
+    for (int i = 0; i < num_runs; ++i) {
+        perf_out << std::left << std::setw(10) << (i+1)
                  << std::setw(20) << signal_times[i]
-                 << std::setw(20) << solver_times[i]
-                 << std::setw(15) << speedup << "\n";
+                 << std::setw(20) << solver_times[i] << "\n";
     }
     perf_out.close();
     
@@ -271,8 +340,9 @@ int main(int argc, char* argv[]) {
     // Clean up
     delete final_interface;
     
-    std::cout << "\nEigen+BLAS/LAPACK multi-threading performance test completed successfully!" << std::endl;
+    std::cout << "\nEigen+BLAS/LAPACK consistency performance test completed successfully!" << std::endl;
     std::cout << "Results saved to: " << perf_file << std::endl;
+    std::cout << "Average solver time: " << std::fixed << std::setprecision(0) << solver_avg << " μs (±" << std::setprecision(1) << solver_std_dev << "%)" << std::endl;
 
     return 0;
 }
