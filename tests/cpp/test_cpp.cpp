@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <cmath>
 #include <algorithm>
+#include <cstdlib>
 #include <Eigen/Core>
 // Note: Using Eigen optimization with BLAS/LAPACK and threading control
 
@@ -126,7 +127,7 @@ int main(int argc, char* argv[]) {
     
     // Get the project root directory (3 levels up from build directory)
     std::filesystem::path current_path = std::filesystem::current_path();
-    std::filesystem::path project_root = current_path;
+    std::filesystem::path project_root = current_path.parent_path().parent_path().parent_path();
     
     // Create full output path
     std::string output_dir = project_root / "outputs" / "cpp" / output_folder_name;
@@ -179,8 +180,17 @@ int main(int argc, char* argv[]) {
         std::cout << "\n--- Testing with " << num_threads << " thread(s) ---" << std::endl;
         
         // Set Eigen thread count
-        //Eigen::setNbThreads(num_threads);
+        Eigen::setNbThreads(num_threads);
+        
+        // Also set environment variables for BLAS threading
+        std::string num_threads_str = std::to_string(num_threads);
+        setenv("OMP_NUM_THREADS", num_threads_str.c_str(), 1);
+        setenv("OPENBLAS_NUM_THREADS", num_threads_str.c_str(), 1);
+        setenv("MKL_NUM_THREADS", num_threads_str.c_str(), 1);
+        setenv("BLIS_NUM_THREADS", num_threads_str.c_str(), 1);
+        
         std::cout << "Eigen threads set to: " << Eigen::nbThreads() << std::endl;
+        std::cout << "OPENBLAS_NUM_THREADS=" << (getenv("OPENBLAS_NUM_THREADS") ? getenv("OPENBLAS_NUM_THREADS") : "not set") << std::endl;
         
         // Create a fresh interface for this test
         Interface* test_interface = new Interface();

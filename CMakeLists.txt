@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(StochasticUzawa LANGUAGES CXX)
+project(StochasticUzawa VERSION 0.1.0 LANGUAGES CXX)
 
 # Option to build Python bindings
 option(BUILD_BINDINGS "Build Python bindings" OFF)
@@ -103,13 +103,14 @@ if(BUILD_BINDINGS)
     target_compile_definitions(stochastic_uzawa PRIVATE
         EIGEN_USE_BLAS
         EIGEN_USE_LAPACKE
+        EIGEN_USE_THREADS
         EIGEN_NO_DEBUG
         NDEBUG
         VERSION_INFO=${PROJECT_VERSION}
     )
     
-    # Optimization flags for Python module
-    target_compile_options(stochastic_uzawa PRIVATE -O3 -march=native -mtune=native)
+    # Optimization flags for Python module (-march=native is for native optimizations and -mtune=native for tuning to the host CPU)
+    target_compile_options(stochastic_uzawa PRIVATE -O3 -march=native -mtune=native) 
     
     # Include custom LAPACKE headers if available
     if(EXISTS "${LAPACKE_INC}")
@@ -160,6 +161,7 @@ else()
     target_compile_definitions(test_cpp PRIVATE
         EIGEN_USE_BLAS
         EIGEN_USE_LAPACKE
+        EIGEN_USE_THREADS
         EIGEN_NO_DEBUG
         NDEBUG
     )
@@ -195,8 +197,6 @@ else()
                 Threads::Threads
             )
         endif()
-        # Link filesystem library for std::filesystem (needed in C++17)
-        target_link_libraries(test_cpp stdc++fs)
     endif()
     
 endif()
