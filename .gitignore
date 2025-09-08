@@ -49,5 +49,5 @@ wheelhouse/
 # Backup files
 *~
 
-# txt summary
-*.txt
+# summaries directory
+summaries/
