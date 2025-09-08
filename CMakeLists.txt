@@ -5,7 +5,7 @@ project(StochasticUzawa CXX)
 option(BUILD_BINDINGS "Build Python bindings" OFF)
 
 # C++ standard
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Compiler flags
@@ -109,7 +109,4 @@ else()
     
     add_executable(test_cpp ${ALL_SOURCES})
     target_link_libraries(test_cpp Eigen3::Eigen OpenMP::OpenMP_CXX)
-    
-    # Link filesystem library for std::filesystem (needed in C++17)
-    target_link_libraries(test_cpp stdc++fs)
 endif()
