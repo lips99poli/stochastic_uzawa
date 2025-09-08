@@ -1,8 +1,8 @@
 # Numeric Scheme Parameters
 T = 1.0
-N = 300
-D = 50
-M = 500
+N = 200
+D = 10
+M = 1000
 epsilon = 0.001
 delta = 1.0
 beta = 0.9
@@ -22,12 +22,12 @@ seed1 = 0 # For BrowninaMotion simulation of OU, 0 for random seed
 seed2 = 0 # For BrowninaMotion simulation of price, 0 for random seed (if equal to seed1 get the same BM of OU!)
 
 # Constraints Parameters
-X0 = 10
-u_min = -100.0
-u_max = 100.0
+X0 = 5
+u_min = -1000.0
+u_max = 1000.0
 X_u_min = -1e6
 X_u_max = 1e6
-terminal_liquidation = 0 # False (0): no terminal liquidation, True (1): terminal liquidation
+terminal_liquidation = 1 # False (0): no terminal liquidation, True (1): terminal liquidation
 stop_trad_price_lb = 0 # False (0): no stop trading if price touches a lower bound, True (1): stop trading if price touches a lower bound
 price_lb = 0.0
 
