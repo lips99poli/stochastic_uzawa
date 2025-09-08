@@ -48,3 +48,6 @@ wheelhouse/
 
 # Backup files
 *~
+
+# txt summary
+*.txt
