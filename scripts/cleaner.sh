@@ -81,7 +81,7 @@ case "$OPTION" in
         echo "Removing __pycache__ directories in tools/..."
         rm -rf tools/__pycache__/
         echo "Removing all files in data/ except Parameters.pot and README.md..."
-        find data/ -type f ! -name "Parameters.pot" ! -name "README.md" -delete 2>/dev/null || true
+        find data/ -type f ! -name "Parameters.pot" ! -name "Parameters_template.pot" ! -name "README.md" -delete 2>/dev/null || true
         echo "All cleaning completed."
         ;;
     "reset")
