@@ -40,7 +40,7 @@ cmake "$PROJECT_ROOT" -DBUILD_BINDINGS=OFF
 
 # Step 2: Build executable
 echo "=== Step 2: Building executable ==="
-make
+make -j
 
 # Step 3: Run test
 echo "=== Step 3: Running test ==="
