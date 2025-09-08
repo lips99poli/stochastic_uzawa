@@ -1,27 +1,37 @@
 # Stochastic Uzawa — Overview and Quick Start
 
-This project implements a **stochastic Uzawa** method to simulate and solve constrained stochastic optimal control problems—motivated by **optimal execution** and **battery storage**. The core engine is **C++ (Eigen)**; plotting and the interactive workflow are in **Python** via a **pybind11** module.
+This project implements a **stochastic Uzawa** method to simulate and solve constrained stochastic optimal control problems—motivated by **optimal execution** and **battery storage**. The core engine is **C++20 (Eigen3)**; plotting and the interactive workflow are in **Python** via a **pybind11** module.
 
 **Background (paper).** The method follows the formulation in *Trading with propagators and constraints: applications to optimal execution and battery storage* (Abi Jaber, De Carvalho, Pham): a stochastic convex program with pathwise inequality constraints, **KKT** optimality conditions leading to a **stochastic Fredholm equation of the second kind**, and a numerical resolution via **stochastic Uzawa** (projected ascent on multipliers) with **LSMC** to approximate conditional expectations—exactly the workflow reproduced here.
 
 **Paper reference:** arXiv:2409.12098v1 [math.OC], 18 Sep 2024. See `doc/` for the PDF.
 
+## Branch Structure
+
+This repository implements two optimization strategies for performance comparison:
+
+- **`main`**: Stable branch with OpenMP parallelization (production-ready)
+- **`openmp-parallel`**: Development branch for OpenMP optimization features
+- **`eigen-optimal`**: Development branch for Eigen+BLAS/LAPACK optimization
+
+The dual-branch architecture enables systematic comparison of parallelization strategies while maintaining clean, optimized implementations of each approach.
+
 ## Prerequisites
 
-- **C++**: C++17 compiler, CMake 3.16+, Eigen3, OpenMP
+- **C++**: C++20 compiler, CMake 3.16+, Eigen3, OpenMP (for `main`/`openmp-parallel`) or BLAS/LAPACK (for `eigen-optimal`)
 - **Python**: Python 3.8+ (for bindings and interactive features)
 
 ## Quick Start
 
 ```bash
 # Interactive experiment (recommended)
-cd scripts && ./run_app.sh soft ../data/Parameters.pot
+./scripts/run_app.sh soft data/Parameters.pot
 
 # C++ test (fast native performance)
-cd scripts && ./test_cpp.sh soft ../data/Parameters.pot
+./tests/cpp/test_cpp.sh data/Parameters.pot
 
 # Python bindings test
-cd scripts && ./test_bindings.sh soft ../data/Parameters.pot
+./tests/python/test_bindings.sh soft data/Parameters.pot
 ```
 
 ---
@@ -29,9 +39,9 @@ cd scripts && ./test_bindings.sh soft ../data/Parameters.pot
 ## Project Structure
 
 ### Core Implementation
-- **`/src/`, `/include/`**: C++17 implementation with Eigen3 matrix operations
+- **`/src/`, `/include/`**: C++20 implementation with Eigen3 matrix operations and OpenMP parallelization
 - **`/bindings/`**: pybind11 Python bindings for seamless Python integration
-- **`CMakeLists.txt`**: Single root CMake (flags select C++-only vs. with bindings)
+- **`CMakeLists.txt`**: Branch-specific CMake configuration (OpenMP vs Eigen+BLAS/LAPACK optimization)
 - **`pyproject.toml`**: Modern Python build; `pip install -e .` invokes CMake as needed
 
 ### Applications & Testing
@@ -71,10 +81,10 @@ All scripts support three setup modes and accept parameters for custom output fo
 Terminal-driven workflow: parameter validation → 10-path price preview → optional solve → save plots.
 
 ```bash
-bash scripts/run_app.sh <soft|hard|lib> <parameter_file> [output_folder_name]
+./scripts/run_app.sh <soft|hard|lib> <parameter_file> [output_folder_name]
 
 # Example with custom output folder:
-bash scripts/run_app.sh soft data/Parameters.pot exp_$(date +%Y%m%d_%H%M%S)
+./scripts/run_app.sh soft data/Parameters.pot exp_$(date +%Y%m%d_%H%M%S)
 ```
 
 ### 2) C++ Native Test (Fast Performance)
@@ -82,7 +92,10 @@ bash scripts/run_app.sh soft data/Parameters.pot exp_$(date +%Y%m%d_%H%M%S)
 Builds C++ executable, runs algorithm, exports matrices, generates plots via Python plotter.
 
 ```bash
-bash scripts/test_cpp.sh <soft|hard|lib> <parameter_file> [output_folder_name]
+./tests/cpp/test_cpp.sh <parameter_file> [output_folder_name]
+
+# Example:
+./tests/cpp/test_cpp.sh data/Parameters.pot my_test_results
 ```
 
 ### 3) Python Bindings Test
@@ -90,7 +103,10 @@ bash scripts/test_cpp.sh <soft|hard|lib> <parameter_file> [output_folder_name]
 Validates Python module imports and interface functionality with automatic plotting.
 
 ```bash
-bash scripts/test_bindings.sh <soft|hard|lib> <parameter_file> [output_folder_name]
+./tests/python/test_bindings.sh <soft|hard|lib> <parameter_file> [output_folder_name]
+
+# Example:
+./tests/python/test_bindings.sh soft data/Parameters.pot binding_test
 ```
 
 ## Quick usage (via `.sh` scripts)
@@ -102,13 +118,13 @@ The scripts handle flags, environment, and paths. For full details, see each fol
 Terminal-driven workflow: parameter validation → 10-path price preview (allows price-only edits) → optional solve → save plots and parameter snapshot.
 
 ```bash
-bash scripts/run_app.sh <soft|hard|lib> <parameter_file> [output_folder_name]
+./scripts/run_app.sh <soft|hard|lib> <parameter_file> [output_folder_name]
 # soft — reuse venv/ if present; build/install only if needed
 # hard — recreate/refresh environment and rebuild the module
 # lib  — rebuild the extension without touching the rest
 
 # Example:
-bash scripts/run_app.sh soft data/Parameters.pot exp_$(date +%Y%m%d_%H%M%S)
+./scripts/run_app.sh soft data/Parameters.pot exp_$(date +%Y%m%d_%H%M%S)
 
 # Results:
 # outputs/app/<output_folder>/
@@ -117,23 +133,23 @@ bash scripts/run_app.sh soft data/Parameters.pot exp_$(date +%Y%m%d_%H%M%S)
 ### 2) C++-only end-to-end test (fast native loop) 
 Builds and runs the native C++ test, writes `.txt` matrices, then uses the Python plotter to generate figures. 
 ```bash 
-bash tests/cpp/test_cpp.sh <soft|hard|lib> <parameter_file> [output_folder_name]
+./tests/cpp/test_cpp.sh <parameter_file> [output_folder_name]
 ```
 What it does: 
 * Configures root CMake with bindings disabled (`-DBUILD_BINDINGS=OFF`), 
-* Builds the C++ test executable, 
-* Runs: `./test_cpp -i <abs_params> -o <output_folder>`, 
+* Builds the C++ test executable with parallel compilation (`make -j`),
+* Runs: `./test_cpp -i <parameter_file> -o <output_folder>`, 
 * Activates `venv/` and calls `python tools/plotter.py "outputs/cpp/<folder>/variables.txt"`, 
 * Results in: `outputs/cpp/<output_folder>/`.
 
 
 ### 3) Python bindings test 
-Ensures the module imports and minimal calls succeed. 
+Ensures the module imports and validates algorithm functionality with automatic plotting.
 ```bash
-tests/python/test_py.sh <soft|hard|lib> <parameter_file> [output_folder_name]
+./tests/python/test_bindings.sh <soft|hard|lib> <parameter_file> [output_folder_name]
 ```
-Internally ensures `venv/` exists and `stuzawa` is importable; rebuilds only if needed. 
-Saves minimal outputs under `output/python/output_folder_name`.
+Internally ensures `venv/` exists and `stochastic_uzawa` module is importable; rebuilds only if needed. 
+Saves results under `outputs/python/<output_folder>/`.
 
 
 ---
@@ -147,12 +163,14 @@ All results are organized under the `outputs/` directory:
 
 ## Key Features
 
+- **Dual optimization strategies** with systematic performance comparison (OpenMP vs Eigen+BLAS/LAPACK)
 - **Dual C++/Python workflows** with consistent interfaces
 - **Interactive parameter adjustment** with real-time feedback  
 - **Automated environment management** (virtual environments, dependencies)
 - **Safe parameter experimentation** (template/working file structure)
-- **Comprehensive test coverage** with automatic plotting
-- **Modern packaging** (CMake + scikit-build-core)
+- **Comprehensive test coverage** with automatic plotting and performance analysis
+- **Modern packaging** (CMake + scikit-build-core with parallel compilation)
+- **Branch-specific optimizations** for research and production use
 
 ## Getting Help
 
